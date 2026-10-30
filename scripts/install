@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Install the app to ~/Applications and start it at every login, using a per-user
+# LaunchAgent (macOS 12 has no login-item API for an unsandboxed app like this).
+# Run again to update; `./scripts/install --uninstall` removes both.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+app="$HOME/Applications/PhotoScreensaver.app"
+label=com.dylanfisher.photo-screensaver
+agent="$HOME/Library/LaunchAgents/$label.plist"
+
+launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+pkill -x PhotoScreensaver && while pgrep -x PhotoScreensaver >/dev/null; do sleep 0.2; done
+
+if [ "${1:-}" = "--uninstall" ]; then
+  rm -rf "$app" "$agent"
+  echo "✓ uninstalled"
+  exit 0
+fi
+
+mkdir -p "$HOME/Applications" "$HOME/Library/LaunchAgents"
+./scripts/bundle "$app"
+
+cat > "$agent" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$app/Contents/MacOS/PhotoScreensaver</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+</dict>
+</plist>
+PLIST
+launchctl bootstrap "gui/$(id -u)" "$agent"
+echo "✓ installed $app; starts at login (Quit in the menu stops it until next login)"

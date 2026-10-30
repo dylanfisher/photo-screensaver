@@ -1,0 +1,122 @@
+import Core
+import Settings
+import XCTest
+
+final class PhotoFeedTests: XCTestCase {
+  private var library: LibraryFixture!
+
+  override func setUpWithError() throws { library = try LibraryFixture() }
+  override func tearDownWithError() throws { try library.remove() }
+
+  func testShowsEveryPhotoBeforeRepeating() async throws {
+    for name in ["a", "b", "c", "d"] { try library.jpeg("\(name).jpg") }
+    let feed = try makeFeed()
+    var seen: Set<String> = []
+    for _ in 0..<4 { seen.insert(try await feed.next().url.lastPathComponent) }
+    XCTAssertEqual(seen, ["a.jpg", "b.jpg", "c.jpg", "d.jpg"])
+  }
+
+  func testLandscapeOnlySkipsPortraits() async throws {
+    try library.jpeg("wide.jpg", width: 30, height: 20)
+    try library.jpeg("tall.jpg", width: 20, height: 30)
+    var settings = Settings.starter
+    settings.orientation = .landscape
+    let feed = try makeFeed(settings)
+    for _ in 0..<6 {
+      let photo = try await feed.next()
+      XCTAssertEqual(photo.url.lastPathComponent, "wide.jpg")
+    }
+  }
+
+  func testDecodesAtTwiceScreenSizeCappedAtOriginal() async throws {
+    try library.jpeg("big.jpg", width: 400, height: 200)
+    // 100×50 screen: fill shows the photo 100 wide, so decode 200 wide.
+    let feed = try makeFeed(screen: CGSize(width: 100, height: 50))
+    let photo = try await feed.next()
+    XCTAssertEqual(photo.size, CGSize(width: 200, height: 100))
+  }
+
+  func testSkipsUnreadableFiles() async throws {
+    try library.jpeg("good.jpg")
+    try library.text("broken.jpg")
+    let feed = try makeFeed()
+    for _ in 0..<4 {
+      let photo = try await feed.next()
+      XCTAssertEqual(photo.url.lastPathComponent, "good.jpg")
+    }
+  }
+
+  func testAllFilesUnreadableThrows() async throws {
+    for i in 0..<3 { try library.text("broken\(i).jpg") }
+    let feed = try makeFeed()
+    do {
+      _ = try await feed.next()
+      XCTFail("expected an error")
+    } catch let error as FeedError {
+      XCTAssertTrue(error.description.contains("in a row"), error.description)
+    }
+  }
+
+  func testEmptyLibraryThrows() async throws {
+    let feed = try makeFeed()
+    do {
+      _ = try await feed.next()
+      XCTFail("expected an error")
+    } catch let error as FeedError {
+      XCTAssertTrue(error.description.contains("no photos"), error.description)
+    }
+  }
+
+  func testDropWakesAWaitingCallerWithCancellation() async throws {
+    try library.jpeg("a.jpg", width: 3000, height: 2000)
+    let feed = try makeFeed()
+    let waiting = Task { try await feed.next() }
+    await feed.drop()
+    do {
+      _ = try await waiting.value
+    } catch is CancellationError {
+      return
+    }
+    // The decode may have finished before the drop; that's fine too.
+  }
+
+  func testCancelledCallerDoesNotTakeThePhoto() async throws {
+    try library.jpeg("only.jpg", width: 3000, height: 2000)
+    var settings = Settings.starter
+    settings.preloadCount = 1
+    let feed = try makeFeed(settings)
+    let cancelled = Task { try await feed.next() }
+    cancelled.cancel()
+    let photo = try await feed.next()
+    XCTAssertEqual(photo.url.lastPathComponent, "only.jpg")
+    let result = await cancelled.result
+    XCTAssertThrowsError(try result.get())
+  }
+
+  func testWorksAgainAfterDrop() async throws {
+    try library.jpeg("a.jpg")
+    let feed = try makeFeed()
+    _ = try await feed.next()
+    await feed.drop()
+    let photo = try await feed.next()
+    XCTAssertEqual(photo.url.lastPathComponent, "a.jpg")
+  }
+
+  func testRetriesAfterAFailure() async throws {
+    let feed = try makeFeed()
+    for _ in 0..<2 {
+      do {
+        _ = try await feed.next()
+        XCTFail("expected an error")
+      } catch let error as FeedError {
+        XCTAssertTrue(error.description.contains("no photos"), error.description)
+      }
+    }
+  }
+
+  private func makeFeed(
+    _ settings: Settings = .starter, screen: CGSize = CGSize(width: 2560, height: 1600)
+  ) throws -> PhotoFeed {
+    PhotoFeed(index: try PhotoIndex.scan(library.root), settings: settings, screenPixels: screen)
+  }
+}

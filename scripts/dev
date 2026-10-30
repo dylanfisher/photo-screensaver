@@ -1,22 +1,13 @@
 #!/usr/bin/env bash
 # Build and launch the app. The ONE place the run command is written down —
 # AGENTS.md and README point here rather than repeating it.
-#
-# macOS grants camera access only to a bundled app with a usage description, so
-# this wraps the built executable in a minimal .app before opening it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-swift build -c release
-bin=$(swift build -c release --show-bin-path)
 bundle=.build/PhotoScreensaver.app
+./scripts/bundle "$bundle"
 
-rm -rf "$bundle"
-mkdir -p "$bundle/Contents/MacOS"
-cp Support/Info.plist "$bundle/Contents/"
-cp "$bin/PhotoScreensaver" "$bundle/Contents/MacOS/"
-codesign --force --sign - "$bundle"
-
-pkill -x PhotoScreensaver || true
+# `open` would just reactivate an instance that is still quitting.
+pkill -x PhotoScreensaver && while pgrep -x PhotoScreensaver >/dev/null; do sleep 0.2; done
 open "$bundle" --args "$@"
 echo "✓ launched $bundle"

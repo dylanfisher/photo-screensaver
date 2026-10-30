@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Build a release .app at the given path (default .build/PhotoScreensaver.app).
+# macOS grants camera access only to a bundled app with a usage description, so
+# the executable is wrapped in a minimal bundle rather than run bare.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+bundle="${1:-.build/PhotoScreensaver.app}"
+swift build -c release
+bin=$(swift build -c release --show-bin-path)
+
+rm -rf "$bundle"
+mkdir -p "$bundle/Contents/MacOS"
+cp Support/Info.plist "$bundle/Contents/"
+cp "$bin/PhotoScreensaver" "$bundle/Contents/MacOS/"
+
+# macOS remembers camera and network-volume permission per code identity. An ad-hoc
+# signature changes on every build, so a stable certificate avoids re-prompting.
+# No -v: a self-signed certificate is "not trusted", but codesign can still sign with it.
+identity="PhotoScreensaver Local"
+hashes=$(security find-identity -p codesigning | awk -v name="\"$identity\"" \
+  '/^ *[0-9]+\)/ && index($0, name) { print $2 }' | sort -u)
+if [[ $(wc -l <<<"$hashes") -gt 1 ]]; then
+  echo "✗ more than one \"$identity\" certificate; delete all but one in Keychain Access" >&2
+  exit 1
+elif [[ -n $hashes ]]; then
+  codesign --force --sign "$hashes" "$bundle"
+else
+  printf '\033[33m! no "%s" signing certificate; macOS may ask for permissions again after each build (see README)\033[0m\n' "$identity" >&2
+  codesign --force --sign - "$bundle"
+fi

@@ -8,7 +8,11 @@ let package = Package(
   products: [.executable(name: "PhotoScreensaver", targets: ["App"])],
   targets: [
     .target(name: "Primitives"),
-    .executableTarget(name: "App", dependencies: ["Primitives"]),
+    .target(name: "Settings"),
+    .target(name: "Core", dependencies: ["Settings", "Primitives"]),
+    .executableTarget(name: "App", dependencies: ["Core", "Settings", "Primitives"]),
     .testTarget(name: "PrimitivesTests", dependencies: ["Primitives"]),
+    .testTarget(name: "SettingsTests", dependencies: ["Settings"]),
+    .testTarget(name: "CoreTests", dependencies: ["Core", "Settings", "Primitives"]),
   ]
 )

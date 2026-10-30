@@ -14,9 +14,54 @@ library, with optional motion-activated display wake.
 
 | Task | Command |
 |---|---|
-| Install | `./scripts/setup` |
+| Set up for development | `./scripts/setup` |
 | Build and launch | `./scripts/dev` |
+| Install, start at login | `./scripts/install` (`--uninstall` removes it) |
 | Test | `./scripts/test` |
 | Everything before a commit | `./scripts/check` |
 
 Agents and contributors: start with [AGENTS.md](AGENTS.md).
+
+The app lives in the menu bar. The slideshow starts after `idleMinutes` without input, or from
+**Show Slideshow** in the menu, and any key press or mouse movement ends it. Problems (an
+unmounted share, a bad setting, camera access denied) appear in the menu with a ⚠︎ icon.
+
+## Settings
+
+**Edit Settings…** in the menu opens
+`~/Library/Application Support/photo-screensaver/config.json`. The app creates it on first launch
+and reloads it on save. Every key is required.
+
+| Key | Meaning |
+|---|---|
+| `libraryPath` | Folder to show photos from, searched recursively. Never written to. |
+| `idleMinutes` | Minutes without input before the slideshow starts. |
+| `slideSeconds` | How long each photo shows. |
+| `transitionSeconds` | Crossfade length; less than `slideSeconds`. |
+| `scaling` | `fill` covers the screen and crops; `fit` shows the whole photo. |
+| `orientation` | `any`, `landscape`, or `portrait`. |
+| `kenBurns` | Slow pan and zoom on each photo. |
+| `preloadCount` | Photos decoded ahead. Each can take 60–160 MB. |
+| `motion.enabled` | Use the camera to sleep the display when no one is around. |
+| `motion.checkEveryMinutes` | Time between camera checks while the slideshow is up. |
+| `motion.sampleSeconds` | How long each check watches, after a 1-second warm-up. |
+| `motion.threshold` | Fraction of the image (0–1) that must change to count as motion. |
+
+The library index is cached in `~/Library/Caches/photo-screensaver/` and rescanned at launch,
+daily, and from **Rescan Library**.
+
+## macOS setup
+
+- **Screen saver and display sleep:** set the macOS screen saver to *Never*, and make display
+  sleep longer than `idleMinutes`, or macOS gets there first. The slideshow keeps the display on
+  while it shows.
+- **Motion mode and the lock screen:** when no motion is seen, the display sleeps. If macOS
+  requires a password after the display sleeps, motion wakes it to the login window instead of
+  the slideshow. Turn that off in System Preferences › Security & Privacy for a picture-frame
+  setup.
+- **Permissions:** on first use macOS asks to let the app read the network volume and, with
+  motion on, use the camera.
+- **Stable permissions across rebuilds:** macOS ties permissions to the app's signature, and
+  `./scripts/dev` signs ad hoc unless a certificate named `PhotoScreensaver Local` exists. Make one
+  once in Keychain Access › Certificate Assistant › Create a Certificate: name
+  `PhotoScreensaver Local`, identity type *Self Signed Root*, certificate type *Code Signing*.
