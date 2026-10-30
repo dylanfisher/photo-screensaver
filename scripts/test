@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Run the test suite. Passes through any extra args to the test runner,
+# so `./scripts/test path/to/file` works for a focused run.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Replace the two lines below with the real command, e.g.
+#   exec npm test -- "$@"
+#   exec uv run pytest "$@"
+#   exec go test ./... "$@"
+printf '\033[31m✗ no test command configured — run /scaffold (see docs/scaffold.md).\033[0m\n' >&2
+exit 1
