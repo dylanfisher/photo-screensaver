@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "indentation": { "spaces": 2 },
+  "lineLength": 100,
+  "respectsExistingLineBreaks": true,
+  "lineBreakBeforeEachArgument": false,
+  "rules": {
+    "AllPublicDeclarationsHaveDocumentation": false,
+    "NeverForceUnwrap": true,
+    "NeverUseForceTry": true,
+    "OrderedImports": true,
+    "UseLetInEveryBoundCaseVariable": true
+  }
+}

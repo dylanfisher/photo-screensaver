@@ -16,13 +16,6 @@ run() {
   if ! "$@"; then failures+=("$name"); fi
 }
 
-# Placeholder for an unconfigured step. Replace the whole `todo "..."` with the
-# real command during scaffolding.
-todo() {
-  printf '\033[31mnot configured — run /scaffold (see docs/scaffold.md). Suggested: %s\033[0m\n' "$1" >&2
-  return 1
-}
-
 # AGENTS.md is the highest-leverage file in the repo and the easiest to let rot.
 # These are the only rules about it a tool can check; the rest is judgment.
 run agents.md bash -c '
@@ -61,7 +54,7 @@ run map bash -c '
 run links bash -c '
   files=$(find . -name "*.md" -not -path "./.git/*" \
     -not -path "*/node_modules/*" -not -path "*/vendor/*" -not -path "*/.venv/*" \
-    -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/target/*")
+    -not -path "*/.build/*" -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/target/*")
   if [ -z "$files" ]; then echo "no markdown found — this check is not looking where it should." >&2; exit 1; fi
   bad=""
   for f in $files; do
@@ -104,10 +97,10 @@ run residue bash -c '
   echo "no leftovers"
 '
 
-run format    todo "npx prettier --check ."
-run lint      todo "npx eslint ."
-run typecheck todo "npx tsc --noEmit"   # delete this step entirely if the language is untyped
-run arch      todo "npx depcruise --validate"   # or ./scripts/arch — see the Tiers table in docs/map.md
+run format    ./scripts/format --check
+run lint      bash -c '"$(swift build --package-path Tools -c release --show-bin-path)/swift-format" lint --strict --recursive Package.swift Sources Tests'
+run typecheck swift build -Xswiftc -warnings-as-errors
+run arch      ./scripts/arch
 run test      ./scripts/test
 
 if [ ${#failures[@]} -gt 0 ]; then

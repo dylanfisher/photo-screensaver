@@ -1,26 +1,16 @@
 # AGENTS.md
 
-<!-- ══════════════════════════════════════════════════════════════
-     TEMPLATE — NOT YET INITIALIZED
-
-     Agent: if this block is still present, this repo was just cloned
-     from the starter and has not been set up. Do NOT infer the answers
-     by scanning the filesystem — run the interview in docs/scaffold.md
-     (or the /scaffold command) with the user, fill in every {{...}}
-     below, then delete this block.
-     ══════════════════════════════════════════════════════════════ -->
-
 Instructions for AI coding agents working in this repo. Humans: see [README.md](README.md).
 
 **Keep this file under ~50 lines.** Anything longer lives in `docs/` and is linked from here.
 
 ## Stack
 
-- **Language:** {{LANGUAGE + VERSION}}
-- **Package manager:** {{PACKAGE MANAGER}}
-- **Framework:** {{FRAMEWORK, or "none"}}
-- **Test framework:** {{TEST FRAMEWORK}}
-- **Layout:** {{where source lives, where tests live}} — tiers and search recipes: [docs/map.md](docs/map.md)
+- **Language:** Swift 5.7, targeting macOS 12 (Monterey) on a 2015 MacBook Pro
+- **Package manager:** Swift Package Manager; dev tools in their own package under `Tools/`
+- **Framework:** AppKit menu-bar app; Core Animation, ImageIO, AVFoundation. No third-party runtime deps
+- **Test framework:** XCTest (needs Xcode 14.2 as the active developer directory)
+- **Layout:** `Sources/<Tier>/`, tests in `Tests/<Module>Tests/` — tiers and search recipes: [docs/map.md](docs/map.md)
 
 ## Commands
 
@@ -29,6 +19,7 @@ Instructions for AI coding agents working in this repo. Humans: see [README.md](
 | Install / bootstrap | `./scripts/setup` |
 | Run locally | `./scripts/dev` |
 | Run tests | `./scripts/test` |
+| Format in place | `./scripts/format` |
 | **Full gate** | `./scripts/check` |
 
 `./scripts/check` is the gate — see Definition of done.
@@ -48,13 +39,12 @@ Non-negotiable, regardless of stack. Rationale: [docs/principles.md](docs/princi
 
 ## Boundaries
 
-<!-- Highest-value section. Be specific about what must NOT be touched directly.
-     Delete these examples and replace with real ones. -->
-- {{e.g. Never edit `db/migrations/` by hand — run `<migration command>`.}}
-- {{e.g. Never commit to `main` — branch first.}}
-- {{e.g. `src/generated/` is generated — edit the schema, then regenerate.}}
+- **The photo library is read-only.** Never write, move, rename, or delete anything under it. Tests use generated fixture images in a temp directory, never the NAS.
+- **Camera frames never leave memory.** Not written to disk, not logged, not sent anywhere. The camera runs only for the configured check window.
+- **macOS 12 APIs only.** Nothing newer, and no `#available` branches to reach past it.
+- A new module goes in `Package.swift`, the Tiers table in docs/map.md, and `scripts/arch` together.
+- `.build/` and `Tools/.build/` are generated — never edit them.
 - **Pre-release:** breaking changes are fine. Stored data has one shape — no version fields, migrations, or compatibility shims; data that doesn't match is discarded. Delete this line at the first production release.
-- Never write, print, or `op read` a plaintext secret. `.env.example` holds `op://` references; they resolve via `op run` at runtime.
 
 ## Definition of done
 

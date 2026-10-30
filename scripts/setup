@@ -5,19 +5,14 @@ cd "$(dirname "$0")/.."
 
 chmod +x scripts/*
 
-# Secrets resolve at runtime via `op run` — see .env.example. Nothing is written
-# to disk, so there is no .env to create here. Just check the tooling is present.
-if ! command -v op >/dev/null 2>&1; then
-  printf '\033[33m! 1Password CLI not found — `brew install 1password-cli`, then `op signin`.\033[0m\n' >&2
-elif ! op account list >/dev/null 2>&1; then
-  printf '\033[33m! 1Password CLI not signed in — run `op signin`.\033[0m\n' >&2
+# XCTest ships only with Xcode, not the Command Line Tools, so `swift test` needs it.
+if ! xcode-select -p | grep -q '\.app/'; then
+  printf '\033[31m✗ Xcode is not the active developer directory. Install Xcode 14.2, then:\n  sudo xcode-select -s /Applications/Xcode.app\033[0m\n' >&2
+  exit 1
 fi
 
-# Replace the two lines below with the real install command, e.g.
-#   npm ci
-#   uv sync
-#   go mod download
-printf '\033[31m✗ no install command configured — run /scaffold (see docs/scaffold.md).\033[0m\n' >&2
-exit 1
+swift package resolve
+swift build
+swift build --package-path Tools -c release
 
 echo "✓ setup complete"

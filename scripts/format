@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Format Swift sources in place. With --check, change nothing and fail if any
+# file would be reformatted (this is what scripts/check runs).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# swift-format lives in its own package under Tools/ so it is never an app dependency.
+swift run --package-path Tools -c release swift-format --version >/dev/null
+fmt=$(swift build --package-path Tools -c release --show-bin-path)/swift-format
+files=$(find Package.swift Sources Tests -name '*.swift')
+
+if [ "${1:-}" != "--check" ]; then
+  "$fmt" format --in-place $files
+  exit 0
+fi
+
+unformatted=""
+for f in $files; do
+  "$fmt" format "$f" | cmp -s - "$f" || unformatted="$unformatted $f"
+done
+if [ -n "$unformatted" ]; then
+  echo "not formatted (run ./scripts/format):$unformatted" >&2; exit 1
+fi
+echo "all files formatted"

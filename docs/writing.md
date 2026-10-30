@@ -4,7 +4,7 @@ Agents copy the prose around them as faithfully as the code. A comment that read
 gets imitated by the next file, and a few hundred edits later the whole codebase sounds that way.
 Settle the voice early and write it down here, so there is one thing to match.
 
-These are the defaults. Change them to fit the project; don't add a second style guide next to them.
+Don't add a second style guide next to this one.
 
 ## Voice
 
@@ -45,25 +45,25 @@ Format: [Conventional Commits](https://www.conventionalcommits.org/).
 | `perf` | Faster or smaller, behavior unchanged |
 | `test` | Tests only |
 | `docs` | Documentation only |
-| `build` / `ci` | Dependencies, build config, CI |
+| `build` | Dependencies, build config, scripts |
 | `chore` | Anything else that doesn't touch shipped code |
 
 - **Summary:** imperative mood ("add", not "added"), lowercase after the colon, no trailing period,
   72 characters max for the whole title line. It completes the sentence "This commit will…".
-- **Scope:** optional. When used, it's a tier or feature name from [map.md](map.md), not a filename.
+- **Scope:** optional. When used, it's a tier from [map.md](map.md): `primitives`, `settings`,
+  `core`, or `app`. Not a filename.
 - **Body:** required unless the title says everything. Explain why the change was made, what
   alternatives were rejected, and anything a reviewer should look at closely. Don't list the files
   changed — the diff does that. Wrap at 72.
-- **Footer:** `BREAKING CHANGE: <what breaks and how to migrate>`, `Refs #123`, `Co-authored-by:`.
+- **Footer:** only `BREAKING CHANGE: <what breaks>`, and rarely, since this is pre-release.
 - **One logical change per commit.** Formatting, renames, and tier promotions go in their own
   commit, separate from the work that prompted them.
 
 ```
-fix(billing): round invoice totals after tax, not before
+feat(core): decode photos at 2× screen size for Ken Burns
 
-Rounding each line item first drifted totals by up to a cent per line
-on large invoices. Round once at the end, matching how the payment
-provider computes the charge.
-
-Refs #214
+Ken Burns zooms in up to 20%, so decoding at exactly screen size
+looked soft by the end of each pan. Decode at 2× the display's pixel
+size, capped at the original, and keep only the current and next few
+images in memory.
 ```

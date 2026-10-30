@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Enforce the tier dependency direction from docs/map.md: each module may import
+# only the modules listed for it. System frameworks (AppKit, AVFoundation…) are
+# not tiers, so they're ignored. Keep this map in sync with the Tiers table.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+allowed() {
+  case "$1" in
+    Primitives) echo "" ;;
+    Settings)   echo "" ;;
+    Core)       echo "Settings Primitives" ;;
+    App)        echo "Core Settings Primitives" ;;
+    *) echo "scripts/arch: Sources/$1 is not a known tier — add it here and to docs/map.md" >&2; return 1 ;;
+  esac
+}
+
+tiers="Primitives Settings Core App"
+bad=""
+for dir in Sources/*; do
+  [ -d "$dir" ] || continue
+  module=$(basename "$dir")
+  ok=$(allowed "$module") || exit 1
+  while IFS=: read -r file line; do
+    imported=$(sed -E 's/^[[:space:]]*(@[a-zA-Z_]+[[:space:]]+)*import[[:space:]]+(class |struct |enum |func |protocol |typealias |var |let )?([A-Za-z_]+).*/\3/' <<<"$line")
+    case " $tiers " in *" $imported "*) ;; *) continue ;; esac
+    case " $ok " in *" $imported "*) ;; *) bad="$bad
+  $file: $module may not import $imported" ;; esac
+  done < <(grep -rnE '^[[:space:]]*(@[a-zA-Z_]+[[:space:]]+)*import[[:space:]]' "$dir" --include='*.swift' | cut -d: -f1,3- || true)
+done
+
+if [ -n "$bad" ]; then echo "forbidden imports (see Tiers in docs/map.md):$bad" >&2; exit 1; fi
+echo "tier imports follow docs/map.md"
