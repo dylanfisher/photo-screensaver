@@ -52,12 +52,20 @@ public final class DisplayPower {
     IOPMAssertionRelease(id)
   }
 
-  /// Seconds since the last keyboard, mouse, or trackpad input from anyone.
+  /// Input that counts as someone using the Mac. Leaves out brightness, volume and media keys
+  /// (system-defined events) and the fn key alone (a modifier change), so adjusting the screen
+  /// or sound doesn't end the slideshow.
+  public static let userInputTypes: [CGEventType] = [
+    .keyDown, .mouseMoved, .scrollWheel,
+    .leftMouseDown, .rightMouseDown, .otherMouseDown,
+    .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+  ]
+
+  /// Seconds since the last `userInputTypes` event from anyone.
   public static func secondsSinceUserInput() -> Double {
-    // ~0 is CGEventType's "any input" value, which has no named case. Imported C enums accept
-    // any raw value, so this never fails.
-    guard let anyInput = CGEventType(rawValue: ~0) else { preconditionFailure("no any-input type") }
-    return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
+    userInputTypes.map {
+      CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0)
+    }.min() ?? .infinity
   }
 
   private func hold(
