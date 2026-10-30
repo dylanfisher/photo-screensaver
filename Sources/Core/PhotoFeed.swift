@@ -166,7 +166,9 @@ public actor PhotoFeed {
     case .portrait where size.width > size.height: return nil
     default: break
     }
-    let edge = decodeLongEdge(photo: size, screenPixels: screenPixels, scaling: settings.scaling)
+    let edge = decodeLongEdge(
+      photo: size, screenPixels: screenPixels, scaling: settings.scaling,
+      zoom: settings.kenBurns ? KenBurns.maxScale : 1)
     return Photo(url: url, image: try file.decode(maxPixelSize: edge))
   }
 }

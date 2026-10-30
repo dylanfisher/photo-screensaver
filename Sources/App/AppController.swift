@@ -85,7 +85,7 @@ final class AppController: NSObject, NSApplicationDelegate {
       loadCachedIndex(for: loaded)
       rescan()
     } else if loaded.scaling != old?.scaling || loaded.orientation != old?.orientation
-      || loaded.preloadCount != old?.preloadCount
+      || loaded.preloadCount != old?.preloadCount || loaded.kenBurns != old?.kenBurns
     {
       rebuildFeed()
     }

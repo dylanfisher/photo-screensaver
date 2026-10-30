@@ -5,7 +5,8 @@ final class FramingTests: XCTestCase {
   let screen = CGSize(width: 2560, height: 1600)
 
   func testFillCoversTheScreen() {
-    let shown = displayedSize(photo: CGSize(width: 3000, height: 3000), in: screen, scaling: .fill)
+    let shown = displayedSize(
+      photo: CGSize(width: 3000, height: 3000), in: screen, scaling: .fill)
     XCTAssertEqual(shown, CGSize(width: 2560, height: 2560))
   }
 
@@ -16,7 +17,7 @@ final class FramingTests: XCTestCase {
 
   func testDecodesAtTwiceDisplayedSize() {
     let edge = decodeLongEdge(
-      photo: CGSize(width: 12000, height: 8000), screenPixels: screen, scaling: .fill)
+      photo: CGSize(width: 12000, height: 8000), screenPixels: screen, scaling: .fill, zoom: 1)
     // 3:2 is wider than 16:10, so fill matches the width: 2560 shown, 5120 decoded.
     XCTAssertEqual(edge, 5120)
   }
@@ -24,13 +25,20 @@ final class FramingTests: XCTestCase {
   func testPortraitFillDecodesPastScreenLongEdge() {
     // A portrait filling a landscape screen is shown 2560 wide, so 3840 tall; 2× is 7680.
     let edge = decodeLongEdge(
-      photo: CGSize(width: 6000, height: 9000), screenPixels: screen, scaling: .fill)
+      photo: CGSize(width: 6000, height: 9000), screenPixels: screen, scaling: .fill, zoom: 1)
     XCTAssertEqual(edge, 7680)
   }
 
   func testDecodeIsCappedAtTheOriginal() {
     let edge = decodeLongEdge(
-      photo: CGSize(width: 4000, height: 3000), screenPixels: screen, scaling: .fill)
+      photo: CGSize(width: 4000, height: 3000), screenPixels: screen, scaling: .fill, zoom: 1)
     XCTAssertEqual(edge, 4000)
+  }
+
+  func testDecodesAtTwiceTheDeepestZoom() {
+    // 2560 shown, zoomed 1.2× to 3072; 2× is 6144.
+    let edge = decodeLongEdge(
+      photo: CGSize(width: 12000, height: 8000), screenPixels: screen, scaling: .fill, zoom: 1.2)
+    XCTAssertEqual(edge, 6144)
   }
 }

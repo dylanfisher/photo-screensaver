@@ -31,9 +31,21 @@ final class PhotoFeedTests: XCTestCase {
   func testDecodesAtTwiceScreenSizeCappedAtOriginal() async throws {
     try library.jpeg("big.jpg", width: 400, height: 200)
     // 100×50 screen: fill shows the photo 100 wide, so decode 200 wide.
-    let feed = try makeFeed(screen: CGSize(width: 100, height: 50))
+    var settings = Settings.starter
+    settings.kenBurns = false
+    let feed = try makeFeed(settings, screen: CGSize(width: 100, height: 50))
     let photo = try await feed.next()
     XCTAssertEqual(photo.size, CGSize(width: 200, height: 100))
+  }
+
+  func testKenBurnsDecodesForTheDeepestZoom() async throws {
+    try library.jpeg("big.jpg", width: 400, height: 200)
+    // Shown 100 wide, zoomed up to 1.2× to 120, so decode 240 wide.
+    var settings = Settings.starter
+    settings.kenBurns = true
+    let feed = try makeFeed(settings, screen: CGSize(width: 100, height: 50))
+    let photo = try await feed.next()
+    XCTAssertEqual(photo.size, CGSize(width: 240, height: 120))
   }
 
   func testSkipsUnreadableFiles() async throws {
