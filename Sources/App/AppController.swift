@@ -209,7 +209,9 @@ final class AppController: NSObject, NSApplicationDelegate {
       errors["light"] = nil
       let now = ProcessInfo.processInfo.systemUptime
       if let change = lightWatch.add(level, at: now), presence.checksNow(after: change) {
-        log.notice("light \(String(describing: change)) to \(level): checking for motion now")
+        log.notice(
+          "light \(String(describing: change), privacy: .public) to \(level, privacy: .public): checking for motion now"
+        )
         checkMotionNow()
       }
     } catch {
@@ -226,7 +228,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     if next != presence {
       let from = presence
       log.notice(
-        "\(String(describing: event)): \(String(describing: from)) → \(String(describing: next))")
+        "\(String(describing: event), privacy: .public): \(String(describing: from), privacy: .public) → \(String(describing: next), privacy: .public)"
+      )
     }
     presence = next
     for effect in effects { perform(effect) }
