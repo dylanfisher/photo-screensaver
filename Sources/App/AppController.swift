@@ -67,6 +67,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     checkOffHours()
     checkInput()
     checkLight()
+    if case .showing = presence { window?.keepFront() }
   }
 
   // MARK: Settings and library

@@ -8,6 +8,7 @@ final class SlideshowWindow {
   private let window: NSWindow
   private let root = CALayer()
   private var current: CALayer?
+  private var activeObserver: NSObjectProtocol?
 
   init(screen: NSScreen) {
     window = NSWindow(
@@ -28,17 +29,32 @@ final class SlideshowWindow {
     window.contentView = view
   }
 
-  /// Activates the app, since macOS ignores cursor hiding from a background app.
+  /// Activates the app, since macOS ignores cursor hiding from a background app. Activation
+  /// finishes later, so the cursor is hidden once it does. Moving the mouse ends the slideshow,
+  /// so hiding it until then is enough.
   func open() {
-    NSApp.activate(ignoringOtherApps: true)
+    activeObserver = NotificationCenter.default.addObserver(
+      forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { _ in NSCursor.setHiddenUntilMouseMoves(true) }
     window.orderFrontRegardless()
-    NSCursor.hide()
+    keepFront()
+  }
+
+  /// Takes focus back if another app took it, which would show the cursor again.
+  func keepFront() {
+    if NSApp.isActive {
+      NSCursor.setHiddenUntilMouseMoves(true)
+    } else {
+      NSApp.activate(ignoringOtherApps: true)
+    }
   }
 
   /// Hides the app again, which hands focus back to whatever was in front before.
   func close() {
     window.orderOut(nil)
-    NSCursor.unhide()
+    activeObserver.map(NotificationCenter.default.removeObserver)
+    activeObserver = nil
+    NSCursor.setHiddenUntilMouseMoves(false)
     NSApp.hide(nil)
     current?.removeFromSuperlayer()
     current = nil
