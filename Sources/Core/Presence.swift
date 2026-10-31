@@ -30,7 +30,9 @@ public enum Presence: Equatable {
   public func handle(_ event: Event) -> (Presence, [Effect]) {
     switch (self, event) {
     case (.desktop, .userIdle), (.desktop, .showNow):
-      return (.showing(emptyChecks: 0), [.startSlideshow])
+      // The display can already be asleep: macOS's display sleep may come before the idle time,
+      // or the app may start while it's off. Showing means the display is on.
+      return (.showing(emptyChecks: 0), [.wakeDisplay, .startSlideshow])
     case (.showing, .userActive), (.displayOff, .userActive):
       // A key press or mouse move already wakes the display on its own.
       return (.desktop, [.stopSlideshow])

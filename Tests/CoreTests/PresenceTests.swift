@@ -3,9 +3,10 @@ import Settings
 import XCTest
 
 final class PresenceTests: XCTestCase {
-  func testIdleStartsTheSlideshow() {
+  func testIdleStartsTheSlideshowWithTheDisplayOn() {
     XCTAssertEqual(Presence.desktop.handle(.userIdle).0, .showing(emptyChecks: 0))
-    XCTAssertEqual(Presence.desktop.handle(.userIdle).1, [.startSlideshow])
+    XCTAssertEqual(Presence.desktop.handle(.userIdle).1, [.wakeDisplay, .startSlideshow])
+    XCTAssertEqual(Presence.desktop.handle(.showNow).1, [.wakeDisplay, .startSlideshow])
   }
 
   func testInputEndsTheSlideshowFromEitherState() {
