@@ -57,29 +57,36 @@ public enum Presence: Equatable {
 
   /// Whether a sudden light change is worth a motion check now: a light switched on while the
   /// display is off may mean someone came in, and one switched off while the slideshow shows
-  /// may mean they left.
-  public func checksNow(after change: LightWatch.Change) -> Bool {
+  /// may mean they left, unless the display is still within `stayOnMinutes`.
+  /// `displayOnFor` is seconds since the display came on, and is ignored while it's off.
+  public func checksNow(
+    after change: LightWatch.Change, motion: Settings.Motion, displayOnFor: Double
+  ) -> Bool {
     switch (self, change) {
-    case (.displayOff, .brighter), (.showing, .darker):
+    case (.displayOff, .brighter):
       return true
+    case (.showing, .darker):
+      return displayOnFor >= motion.stayOnMinutes * 60
     default:
       return false
     }
   }
 
-  /// Seconds until the next motion check, or nil when none should run. While showing, checks
-  /// are `checkEveryMinutes` apart, but an empty check is confirmed after
+  /// Seconds until the next motion check, or nil when none should run. While showing, none run
+  /// until the display has been on for `stayOnMinutes`, so nothing can turn it off sooner. After
+  /// that, checks are `checkEveryMinutes` apart, but an empty check is confirmed after
   /// `quickCheckEverySeconds`. While the display is off, checks start `quickCheckEverySeconds`
   /// apart, since someone who just stepped away often comes back soon, and the gap doubles
   /// after each empty check up to `checkEveryMinutes`.
-  public func secondsUntilMotionCheck(_ motion: Settings.Motion) -> Double? {
+  public func secondsUntilMotionCheck(_ motion: Settings.Motion, displayOnFor: Double) -> Double? {
     guard motion.enabled else { return nil }
     let longest = motion.checkEveryMinutes * 60
     switch self {
     case .desktop:
       return nil
     case .showing(let empty):
-      return empty == 0 ? longest : motion.quickCheckEverySeconds
+      guard empty == 0 else { return motion.quickCheckEverySeconds }
+      return max(longest, motion.stayOnMinutes * 60 - displayOnFor)
     case .displayOff(let empty):
       return min(motion.quickCheckEverySeconds * pow(2, Double(empty)), longest)
     }

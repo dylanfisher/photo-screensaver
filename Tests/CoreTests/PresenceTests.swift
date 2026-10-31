@@ -68,11 +68,24 @@ final class PresenceTests: XCTestCase {
   }
 
   func testLightChangesThatCallForACheckNow() {
-    XCTAssertTrue(Presence.displayOff(emptyChecks: 3).checksNow(after: .brighter))
-    XCTAssertTrue(Presence.showing(emptyChecks: 0).checksNow(after: .darker))
-    XCTAssertFalse(Presence.displayOff(emptyChecks: 3).checksNow(after: .darker))
-    XCTAssertFalse(Presence.showing(emptyChecks: 0).checksNow(after: .brighter))
-    XCTAssertFalse(Presence.desktop.checksNow(after: .brighter))
+    let on = 30 * 60.0
+    XCTAssertTrue(
+      Presence.displayOff(emptyChecks: 3).checksNow(
+        after: .brighter, motion: motion, displayOnFor: 0))
+    XCTAssertTrue(
+      Presence.showing(emptyChecks: 0).checksNow(after: .darker, motion: motion, displayOnFor: on))
+    XCTAssertFalse(
+      Presence.displayOff(emptyChecks: 3).checksNow(after: .darker, motion: motion, displayOnFor: 0)
+    )
+    XCTAssertFalse(
+      Presence.showing(emptyChecks: 0).checksNow(after: .brighter, motion: motion, displayOnFor: on)
+    )
+    XCTAssertFalse(Presence.desktop.checksNow(after: .brighter, motion: motion, displayOnFor: on))
+  }
+
+  func testLightOffDoesNotCheckWhileTheDisplayMustStayOn() {
+    XCTAssertFalse(
+      Presence.showing(emptyChecks: 0).checksNow(after: .darker, motion: motion, displayOnFor: 600))
   }
 
   // MARK: Check schedule
@@ -80,27 +93,38 @@ final class PresenceTests: XCTestCase {
   var motion: Settings.Motion {
     var motion = Settings.starter.motion
     motion.enabled = true
+    motion.stayOnMinutes = 30
     motion.checkEveryMinutes = 5
     motion.quickCheckEverySeconds = 15
     return motion
   }
 
+  func testNoChecksUntilTheDisplayHasStayedOn() {
+    XCTAssertEqual(
+      Presence.showing(emptyChecks: 0).secondsUntilMotionCheck(motion, displayOnFor: 0), 1800)
+    XCTAssertEqual(
+      Presence.showing(emptyChecks: 0).secondsUntilMotionCheck(motion, displayOnFor: 1000), 800)
+  }
+
   func testShowingChecksAtTheLongIntervalAndConfirmsQuickly() {
-    XCTAssertEqual(Presence.showing(emptyChecks: 0).secondsUntilMotionCheck(motion), 300)
-    XCTAssertEqual(Presence.showing(emptyChecks: 1).secondsUntilMotionCheck(motion), 15)
+    let on = 40 * 60.0
+    XCTAssertEqual(
+      Presence.showing(emptyChecks: 0).secondsUntilMotionCheck(motion, displayOnFor: on), 300)
+    XCTAssertEqual(
+      Presence.showing(emptyChecks: 1).secondsUntilMotionCheck(motion, displayOnFor: on), 15)
   }
 
   func testDisplayOffChecksBackOffToTheLongInterval() {
     let delays = (0..<7).map {
-      Presence.displayOff(emptyChecks: $0).secondsUntilMotionCheck(motion)
+      Presence.displayOff(emptyChecks: $0).secondsUntilMotionCheck(motion, displayOnFor: 0)
     }
     XCTAssertEqual(delays, [15, 30, 60, 120, 240, 300, 300])
   }
 
   func testNoChecksOnTheDesktopOrWithMotionOff() {
-    XCTAssertNil(Presence.desktop.secondsUntilMotionCheck(motion))
+    XCTAssertNil(Presence.desktop.secondsUntilMotionCheck(motion, displayOnFor: 0))
     var off = motion
     off.enabled = false
-    XCTAssertNil(Presence.showing(emptyChecks: 0).secondsUntilMotionCheck(off))
+    XCTAssertNil(Presence.showing(emptyChecks: 0).secondsUntilMotionCheck(off, displayOnFor: 0))
   }
 }

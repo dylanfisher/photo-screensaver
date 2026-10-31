@@ -16,6 +16,9 @@ public struct Settings: Codable, Equatable {
 
   public struct Motion: Codable, Equatable {
     public var enabled: Bool
+    /// Time the display stays on after the slideshow starts or motion wakes it, before any
+    /// check can turn it off.
+    public var stayOnMinutes: Double
     /// Longest time between camera checks.
     public var checkEveryMinutes: Double
     /// Time before the check that confirms an empty room, and the first gap between checks
@@ -99,7 +102,8 @@ extension Settings {
     kenBurns: true,
     preloadCount: 3,
     motion: Motion(
-      enabled: false, checkEveryMinutes: 5, quickCheckEverySeconds: 15, sampleSeconds: 4,
+      enabled: false, stayOnMinutes: 30, checkEveryMinutes: 5, quickCheckEverySeconds: 15,
+      sampleSeconds: 4,
       useLightSensor: true, threshold: 0.2),
     offHours: OffHours(enabled: false, start: "00:00", end: "09:00")
   )
@@ -139,6 +143,7 @@ extension Settings {
     let ranges: [(String, Double, Double)] = [
       ("idleMinutes", idleMinutes, 24 * 60),
       ("slideSeconds", slideSeconds, 60 * 60),
+      ("motion.stayOnMinutes", motion.stayOnMinutes, 24 * 60),
       ("motion.checkEveryMinutes", motion.checkEveryMinutes, 24 * 60),
       (
         "motion.quickCheckEverySeconds", motion.quickCheckEverySeconds,

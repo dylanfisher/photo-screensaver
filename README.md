@@ -43,7 +43,8 @@ and reloads it on save. Every key is required.
 | `kenBurns` | Slow pan and zoom on each photo. |
 | `preloadCount` | Photos decoded ahead. Each can take 60–160 MB. |
 | `motion.enabled` | Use the camera to sleep the display when no one is around. |
-| `motion.checkEveryMinutes` | Time between camera checks while the slideshow is up, and the longest gap while the display is off. |
+| `motion.stayOnMinutes` | Minimum time the display stays on after the slideshow starts or motion wakes it. No camera checks run until then. |
+| `motion.checkEveryMinutes` | Time between camera checks once `stayOnMinutes` has passed, and the longest gap while the display is off. |
 | `motion.quickCheckEverySeconds` | Time before a second check confirms an empty room, and the first gap once the display is off. Gaps then double up to `checkEveryMinutes`. Shorter wakes the display sooner but runs the camera more. |
 | `motion.sampleSeconds` | Longest each check watches, after a 1-second warm-up. It stops as soon as it sees motion. |
 | `motion.useLightSensor` | Watch the ambient light sensor beside the camera, and check for motion straight away when the room's light changes suddenly: a light switched on while the display is off, or off while the slideshow shows. The sensor doesn't use the camera. Intel MacBooks only. |

@@ -25,8 +25,9 @@ final class AppController: NSObject, NSApplicationDelegate {
   private var feed: PhotoFeed?
   private var scanning = false
   private var presence = Presence.desktop
-  /// Uptime when `presence` last changed. Uptime, like the input idle time it's compared with,
-  /// stops while the Mac sleeps; wall-clock time doesn't.
+  /// Uptime when `presence` last changed. While showing, that's when the display came on.
+  /// Uptime, like the input idle time it's compared with, stops while the Mac sleeps;
+  /// wall-clock time doesn't.
   private var enteredAt = ProcessInfo.processInfo.systemUptime
   private var window: SlideshowWindow?
   private var slideTask: Task<Void, Never>?
@@ -208,7 +209,9 @@ final class AppController: NSObject, NSApplicationDelegate {
       let level = try sensor.read()
       errors["light"] = nil
       let now = ProcessInfo.processInfo.systemUptime
-      if let change = lightWatch.add(level, at: now), presence.checksNow(after: change) {
+      if let change = lightWatch.add(level, at: now),
+        presence.checksNow(after: change, motion: motion, displayOnFor: now - enteredAt)
+      {
         log.notice(
           "light \(String(describing: change), privacy: .public) to \(level, privacy: .public): checking for motion now"
         )
@@ -331,7 +334,8 @@ final class AppController: NSObject, NSApplicationDelegate {
 
   private func scheduleMotionCheck(now: Bool = false) {
     guard motionTask == nil, let motion = settings?.motion,
-      let scheduled = presence.secondsUntilMotionCheck(motion)
+      let scheduled = presence.secondsUntilMotionCheck(
+        motion, displayOnFor: ProcessInfo.processInfo.systemUptime - enteredAt)
     else { return }
     let delay = now ? 0 : scheduled
     motionCheckAt = ProcessInfo.processInfo.systemUptime + delay
