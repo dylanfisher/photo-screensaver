@@ -66,6 +66,14 @@ final class PresenceTests: XCTestCase {
     XCTAssertEqual(Presence.desktop.handle(.offHoursBegan).1, [])
   }
 
+  func testLightChangesThatCallForACheckNow() {
+    XCTAssertTrue(Presence.displayOff(emptyChecks: 3).checksNow(after: .brighter))
+    XCTAssertTrue(Presence.showing(emptyChecks: 0).checksNow(after: .darker))
+    XCTAssertFalse(Presence.displayOff(emptyChecks: 3).checksNow(after: .darker))
+    XCTAssertFalse(Presence.showing(emptyChecks: 0).checksNow(after: .brighter))
+    XCTAssertFalse(Presence.desktop.checksNow(after: .brighter))
+  }
+
   // MARK: Check schedule
 
   var motion: Settings.Motion {

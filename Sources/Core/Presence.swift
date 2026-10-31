@@ -53,6 +53,18 @@ public enum Presence: Equatable {
     }
   }
 
+  /// Whether a sudden light change is worth a motion check now: a light switched on while the
+  /// display is off may mean someone came in, and one switched off while the slideshow shows
+  /// may mean they left.
+  public func checksNow(after change: LightWatch.Change) -> Bool {
+    switch (self, change) {
+    case (.displayOff, .brighter), (.showing, .darker):
+      return true
+    default:
+      return false
+    }
+  }
+
   /// Seconds until the next motion check, or nil when none should run. While showing, checks
   /// are `checkEveryMinutes` apart, but an empty check is confirmed after
   /// `quickCheckEverySeconds`. While the display is off, checks start `quickCheckEverySeconds`

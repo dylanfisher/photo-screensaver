@@ -22,6 +22,9 @@ public struct Settings: Codable, Equatable {
     /// while the display is off.
     public var quickCheckEverySeconds: Double
     public var sampleSeconds: Double
+    /// Check for motion straight away when the room's light changes suddenly, read from the
+    /// ambient light sensor.
+    public var useLightSensor: Bool
     /// Fraction of any one cell of the camera image's grid (0–1) that must change to count as
     /// motion.
     public var threshold: Double
@@ -97,7 +100,7 @@ extension Settings {
     preloadCount: 3,
     motion: Motion(
       enabled: false, checkEveryMinutes: 5, quickCheckEverySeconds: 15, sampleSeconds: 4,
-      threshold: 0.2),
+      useLightSensor: true, threshold: 0.2),
     offHours: OffHours(enabled: false, start: "00:00", end: "09:00")
   )
 

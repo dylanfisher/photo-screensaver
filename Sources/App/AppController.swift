@@ -1,5 +1,6 @@
 import AppKit
 import Core
+import Primitives
 import Settings
 import os
 
@@ -30,6 +31,11 @@ final class AppController: NSObject, NSApplicationDelegate {
   private var window: SlideshowWindow?
   private var slideTask: Task<Void, Never>?
   private var motionTask: Task<Void, Never>?
+  /// Uptime when the scheduled motion check starts; until then its task is only waiting.
+  private var motionCheckAt: Double?
+  /// Opened on first use, so a Mac without the sensor only errors when it's turned on.
+  private var lightSensor: LightSensor?
+  private var lightWatch = LightWatch()
   /// Whether it was off hours at the last tick, so a running slideshow is stopped once as they
   /// begin, and one started by hand during them keeps going.
   private var wasOffHours = false
@@ -59,6 +65,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     reloadSettingsIfChanged()
     checkOffHours()
     checkInput()
+    checkLight()
   }
 
   // MARK: Settings and library
@@ -95,6 +102,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
     if loaded.motion != old?.motion {
       errors["motion"] = nil
+      errors["light"] = nil
       motionTask?.cancel()
       motionTask = nil
       if !loaded.motion.enabled { send(.motionOff) }
@@ -189,6 +197,26 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
   }
 
+  /// One sensor read is cheap and doesn't use the camera, so it runs every tick.
+  private func checkLight() {
+    guard presence != .desktop, let motion = settings?.motion, motion.enabled,
+      motion.useLightSensor
+    else { return }
+    do {
+      let sensor = try lightSensor ?? LightSensor()
+      lightSensor = sensor
+      let level = try sensor.read()
+      errors["light"] = nil
+      let now = ProcessInfo.processInfo.systemUptime
+      if let change = lightWatch.add(level, at: now), presence.checksNow(after: change) {
+        log.notice("light \(String(describing: change)) to \(level): checking for motion now")
+        checkMotionNow()
+      }
+    } catch {
+      errors["light"] = "Light sensor: \(error)"
+    }
+  }
+
   @objc private func showNow() {
     send(.showNow)
   }
@@ -202,7 +230,10 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
     presence = next
     for effect in effects { perform(effect) }
-    if !effects.isEmpty { enteredAt = ProcessInfo.processInfo.systemUptime }
+    if !effects.isEmpty {
+      enteredAt = ProcessInfo.processInfo.systemUptime
+      lightWatch.settle(at: enteredAt)
+    }
     if presence == .desktop {
       motionTask?.cancel()
       motionTask = nil
@@ -287,10 +318,20 @@ final class AppController: NSObject, NSApplicationDelegate {
     feed?.dropAsync()
   }
 
-  private func scheduleMotionCheck() {
+  /// Moves a waiting motion check to now. One already under way is left to finish.
+  private func checkMotionNow() {
+    guard let motionCheckAt, ProcessInfo.processInfo.systemUptime < motionCheckAt else { return }
+    motionTask?.cancel()
+    motionTask = nil
+    scheduleMotionCheck(now: true)
+  }
+
+  private func scheduleMotionCheck(now: Bool = false) {
     guard motionTask == nil, let motion = settings?.motion,
-      let delay = presence.secondsUntilMotionCheck(motion)
+      let scheduled = presence.secondsUntilMotionCheck(motion)
     else { return }
+    let delay = now ? 0 : scheduled
+    motionCheckAt = ProcessInfo.processInfo.systemUptime + delay
     motionTask = Task {
       do {
         try await Task.sleep(nanoseconds: UInt64(delay * 1e9))
