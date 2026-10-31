@@ -20,6 +20,7 @@ public enum Presence: Equatable {
     case userIdle, userActive, showNow, motionSeen, noMotion
     /// Motion mode was switched off in settings.
     case motionOff
+    case offHoursBegan
   }
 
   public enum Effect: Equatable {
@@ -32,6 +33,10 @@ public enum Presence: Equatable {
       return (.showing(emptyChecks: 0), [.startSlideshow])
     case (.showing, .userActive), (.displayOff, .userActive):
       // A key press or mouse move already wakes the display on its own.
+      return (.desktop, [.stopSlideshow])
+    case (.showing, .offHoursBegan):
+      return (.desktop, [.stopSlideshow, .sleepDisplay])
+    case (.displayOff, .offHoursBegan):
       return (.desktop, [.stopSlideshow])
     case (.showing(let empty), .noMotion) where empty + 1 >= Self.emptyChecksToSleep:
       return (.displayOff(emptyChecks: 0), [.pauseSlideshow, .sleepDisplay])

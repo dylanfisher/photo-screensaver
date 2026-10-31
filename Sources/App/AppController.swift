@@ -30,6 +30,9 @@ final class AppController: NSObject, NSApplicationDelegate {
   private var window: SlideshowWindow?
   private var slideTask: Task<Void, Never>?
   private var motionTask: Task<Void, Never>?
+  /// Whether it was off hours at the last tick, so a running slideshow is stopped once as they
+  /// begin, and one started by hand during them keeps going.
+  private var wasOffHours = false
 
   /// Shown in the menu, one line each. Keyed so a later success clears only its own error.
   private var errors: [String: String] = [:] {
@@ -54,6 +57,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
   @objc private func tick() {
     reloadSettingsIfChanged()
+    checkOffHours()
     checkInput()
   }
 
@@ -165,11 +169,19 @@ final class AppController: NSObject, NSApplicationDelegate {
 
   // MARK: Presence
 
+  private func checkOffHours() {
+    let offHours = settings?.offHours.contains(Date()) == true
+    if offHours && !wasOffHours { send(.offHoursBegan) }
+    wasOffHours = offHours
+  }
+
   private func checkInput() {
     let idle = DisplayPower.secondsSinceUserInput()
     switch presence {
     case .desktop:
-      if let settings, feed != nil, idle >= settings.idleMinutes * 60 { send(.userIdle) }
+      if let settings, feed != nil, !wasOffHours, idle >= settings.idleMinutes * 60 {
+        send(.userIdle)
+      }
     case .showing, .displayOff:
       if idle < ProcessInfo.processInfo.systemUptime - enteredAt - Self.inputGraceSeconds {
         send(.userActive)

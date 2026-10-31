@@ -47,6 +47,8 @@ and reloads it on save. Every key is required.
 | `motion.quickCheckEverySeconds` | Time before a second check confirms an empty room, and the first gap once the display is off. Gaps then double up to `checkEveryMinutes`. Shorter wakes the display sooner but runs the camera more. |
 | `motion.sampleSeconds` | Longest each check watches, after a 1-second warm-up. It stops as soon as it sees motion. |
 | `motion.threshold` | Fraction (0–1) of any one cell of an 8×6 grid over the camera image that must change to count as motion. Lower catches smaller or more distant movement. |
+| `offHours.enabled` | Turn the slideshow off for part of each day. |
+| `offHours.start`, `offHours.end` | 24-hour local times like `"00:00"` and `"09:00"`. A start later than the end spans midnight. In between, the slideshow doesn't start and the camera stays off. A slideshow that's showing when they begin stops, and the display sleeps. Choosing **Show Slideshow** still works. |
 
 The library index is cached in `~/Library/Caches/photo-screensaver/` and rescanned at launch,
 daily, and from **Rescan Library**.

@@ -27,6 +27,34 @@ public struct Settings: Codable, Equatable {
     public var threshold: Double
   }
 
+  /// Times of day when the slideshow doesn't start on its own and motion checks don't run. A
+  /// running slideshow stops and the display sleeps as they begin.
+  public struct OffHours: Codable, Equatable {
+    public var enabled: Bool
+    /// "HH:mm", 24-hour, local time. A `start` later than `end` spans midnight.
+    public var start: String
+    public var end: String
+
+    public func contains(_ date: Date, calendar: Calendar = .current) -> Bool {
+      guard enabled else { return false }
+      guard let start = Self.minuteOfDay(start), let end = Self.minuteOfDay(end) else {
+        preconditionFailure("validate() rejects off-hours times that aren't HH:mm")
+      }
+      let now = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+      return start < end ? (start..<end).contains(now) : now >= start || now < end
+    }
+
+    /// Minutes after midnight for an "HH:mm" time, or nil if it isn't one.
+    static func minuteOfDay(_ time: String) -> Int? {
+      let parts = time.split(separator: ":", omittingEmptySubsequences: false)
+      guard parts.count == 2,
+        parts.allSatisfy({ $0.count == 2 && $0.allSatisfy { ("0"..."9").contains($0) } }),
+        let hour = Int(parts[0]), let minute = Int(parts[1]), hour < 24, minute < 60
+      else { return nil }
+      return hour * 60 + minute
+    }
+  }
+
   /// Folder the photos are read from, searched recursively. Never written to.
   public var libraryPath: String
   /// Minutes without keyboard or mouse input before the slideshow starts.
@@ -39,6 +67,7 @@ public struct Settings: Codable, Equatable {
   /// Photos decoded ahead of the one on screen.
   public var preloadCount: Int
   public var motion: Motion
+  public var offHours: OffHours
 
   public var libraryURL: URL {
     URL(fileURLWithPath: (libraryPath as NSString).expandingTildeInPath, isDirectory: true)
@@ -68,7 +97,8 @@ extension Settings {
     preloadCount: 3,
     motion: Motion(
       enabled: false, checkEveryMinutes: 5, quickCheckEverySeconds: 15, sampleSeconds: 4,
-      threshold: 0.2)
+      threshold: 0.2),
+    offHours: OffHours(enabled: false, start: "00:00", end: "09:00")
   )
 
   public static func decode(_ data: Data) throws -> Settings {
@@ -129,6 +159,14 @@ extension Settings {
     if !(0...1).contains(motion.threshold) {
       throw SettingsError(
         description: "motion.threshold must be between 0 and 1, got \(motion.threshold)")
+    }
+    for (key, time) in [("offHours.start", offHours.start), ("offHours.end", offHours.end)]
+    where OffHours.minuteOfDay(time) == nil {
+      throw SettingsError(
+        description: "\(key) must be a 24-hour time like \"09:00\", got \"\(time)\"")
+    }
+    if offHours.start == offHours.end {
+      throw SettingsError(description: "offHours.start and offHours.end must differ")
     }
     if libraryPath.isEmpty {
       throw SettingsError(description: "libraryPath is empty")

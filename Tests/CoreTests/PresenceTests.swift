@@ -57,6 +57,15 @@ final class PresenceTests: XCTestCase {
     XCTAssertEqual(Presence.showing(emptyChecks: 0).handle(.showNow).1, [])
   }
 
+  func testOffHoursEndTheSlideshowAndSleepTheDisplay() {
+    XCTAssertEqual(
+      Presence.showing(emptyChecks: 0).handle(.offHoursBegan).1, [.stopSlideshow, .sleepDisplay])
+    let (state, effects) = Presence.displayOff(emptyChecks: 2).handle(.offHoursBegan)
+    XCTAssertEqual(state, .desktop)
+    XCTAssertEqual(effects, [.stopSlideshow])
+    XCTAssertEqual(Presence.desktop.handle(.offHoursBegan).1, [])
+  }
+
   // MARK: Check schedule
 
   var motion: Settings.Motion {
