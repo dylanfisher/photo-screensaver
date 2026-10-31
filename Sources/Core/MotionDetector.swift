@@ -5,8 +5,8 @@ public struct MotionError: Error, CustomStringConvertible {
   public let description: String
 }
 
-/// Turns the camera on for a few seconds and reports whether anything moved. Frames are compared
-/// in memory at 64×48 grayscale and never kept.
+/// Turns the camera on until it sees motion or the sample time runs out. Frames are compared in
+/// memory at 64×48 grayscale and never kept.
 public final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   /// Ignored from the first frame on, while the camera adjusts its exposure.
   static let warmUpSeconds = 1.0
@@ -14,20 +14,21 @@ public final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBuffe
   static let startTimeoutSeconds = 6.0
   /// Frames are compared this far apart, so slow movement still adds up to a visible change.
   static let compareEverySeconds = 0.5
+  static let pollSeconds = 0.1
 
   private let queue = DispatchQueue(label: "photo-screensaver.motion")
   /// startRunning can block for seconds while another app holds the camera; on its own queue it
   /// can't hold up frame handling, the start timeout, or cancellation.
   private let sessionQueue = DispatchQueue(label: "photo-screensaver.motion-session")
   // Touched only on `queue`.
-  private var reference: (frame: GrayFrame, time: Double)?
-  private var maxChange = 0.0
-  private var comparisons = 0
+  private var sample = MotionSample(threshold: 1)
+  private var lastSampledTime: Double?
   private var firstFrameTime: Double?
 
-  /// True when at least `threshold` of the image changed between any two compared frames
-  /// during `seconds`, after the warm-up. Throws if the camera delivers too few frames to
-  /// tell, rather than reporting no motion and sleeping the display on someone.
+  /// True when `MotionSample` sees motion within `seconds` after the warm-up. Returns as soon
+  /// as it does, so the camera is on only as long as it takes to tell. Throws if the camera
+  /// delivers too few frames to tell, rather than reporting no motion and sleeping the display
+  /// on someone.
   public func detect(for seconds: Double, threshold: Double) async throws -> Bool {
     try await Self.requestAccess()
     guard let camera = AVCaptureDevice.default(for: .video) else {
@@ -49,9 +50,8 @@ public final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBuffe
     session.addOutput(output)
 
     queue.sync {
-      reference = nil
-      maxChange = 0
-      comparisons = 0
+      sample = MotionSample(threshold: threshold)
+      lastSampledTime = nil
       firstFrameTime = nil
     }
     sessionQueue.async { session.startRunning() }
@@ -69,20 +69,23 @@ public final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBuffe
               "camera sent no frames in \(Int(Self.startTimeoutSeconds)) s; is another app using it?"
           )
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await Task.sleep(nanoseconds: UInt64(Self.pollSeconds * 1e9))
       }
-      try await Task.sleep(nanoseconds: UInt64((Self.warmUpSeconds + seconds) * 1e9))
+      let end = CACurrentMediaTime() + Self.warmUpSeconds + seconds
+      while CACurrentMediaTime() < end, !queue.sync(execute: { sample.moved }) {
+        try await Task.sleep(nanoseconds: UInt64(Self.pollSeconds * 1e9))
+      }
     } catch {
       // Cancelled or timed out: the camera must still go off.
       stop()
       throw error
     }
     stop()
-    let (change, compared) = queue.sync { (maxChange, comparisons) }
-    guard compared > 0 else {
+    let result = queue.sync { sample }
+    guard result.moved || result.comparisons > 0 else {
       throw MotionError(description: "camera sent too few frames to compare")
     }
-    return change >= threshold
+    return result.moved
   }
 
   public func captureOutput(
@@ -94,7 +97,7 @@ public final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBuffe
     guard let firstFrameTime, now - firstFrameTime >= Self.warmUpSeconds,
       let pixels = CMSampleBufferGetImageBuffer(sampleBuffer)
     else { return }
-    if let reference, now - reference.time < Self.compareEverySeconds { return }
+    if let lastSampledTime, now - lastSampledTime < Self.compareEverySeconds { return }
 
     CVPixelBufferLockBaseAddress(pixels, .readOnly)
     defer { CVPixelBufferUnlockBaseAddress(pixels, .readOnly) }
@@ -105,11 +108,8 @@ public final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBuffe
       height: CVPixelBufferGetHeightOfPlane(pixels, 0),
       bytesPerRow: CVPixelBufferGetBytesPerRowOfPlane(pixels, 0),
       toWidth: 64, height: 48)
-    if let reference {
-      maxChange = max(maxChange, frame.changedFraction(from: reference.frame))
-      comparisons += 1
-    }
-    reference = (frame, now)
+    sample.add(frame)
+    lastSampledTime = now
   }
 
   private static func requestAccess() async throws {

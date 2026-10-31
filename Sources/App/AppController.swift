@@ -94,7 +94,11 @@ final class AppController: NSObject, NSApplicationDelegate {
       motionTask?.cancel()
       motionTask = nil
       if !loaded.motion.enabled { send(.motionOff) }
-      if presence != .desktop { keepAwake(display: presence == .showing) }
+      if case .displayOff = presence {
+        keepAwake(display: false)
+      } else if presence != .desktop {
+        keepAwake(display: true)
+      }
       scheduleMotionCheck()
     }
   }
@@ -272,11 +276,12 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   private func scheduleMotionCheck() {
-    guard motionTask == nil, presence != .desktop, let motion = settings?.motion, motion.enabled
+    guard motionTask == nil, let motion = settings?.motion,
+      let delay = presence.secondsUntilMotionCheck(motion)
     else { return }
     motionTask = Task {
       do {
-        try await Task.sleep(nanoseconds: UInt64(motion.checkEveryMinutes * 60 * 1e9))
+        try await Task.sleep(nanoseconds: UInt64(delay * 1e9))
         let moved = try await detector.detect(
           for: motion.sampleSeconds, threshold: motion.threshold)
         // A cancelled task must not touch `motionTask`: it may already be a newer one.
@@ -286,7 +291,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         send(moved ? .motionSeen : .noMotion)
       } catch {
         guard !Task.isCancelled else { return }
-        // The slideshow keeps showing; try again next interval in case the camera was busy.
+        // The state stays as it was; try again next interval in case the camera was busy.
         motionTask = nil
         errors["motion"] = "Motion: \(error)"
         scheduleMotionCheck()

@@ -41,6 +41,15 @@ final class SettingsTests: XCTestCase {
     assertFails(json, containing: "motion.threshold")
   }
 
+  func testQuickCheckLongerThanCheckIntervalFails() throws {
+    var json = try starterJSON()
+    var motion = try XCTUnwrap(json["motion"] as? [String: Any])
+    motion["checkEveryMinutes"] = 1
+    motion["quickCheckEverySeconds"] = 90
+    json["motion"] = motion
+    assertFails(json, containing: "motion.quickCheckEverySeconds")
+  }
+
   func testCreateIfMissingWritesStarterOnlyOnce() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: dir) }

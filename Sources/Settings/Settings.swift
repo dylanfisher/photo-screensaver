@@ -16,9 +16,14 @@ public struct Settings: Codable, Equatable {
 
   public struct Motion: Codable, Equatable {
     public var enabled: Bool
+    /// Longest time between camera checks.
     public var checkEveryMinutes: Double
+    /// Time before the check that confirms an empty room, and the first gap between checks
+    /// while the display is off.
+    public var quickCheckEverySeconds: Double
     public var sampleSeconds: Double
-    /// Fraction of the camera image (0–1) that must change between frames to count as motion.
+    /// Fraction of any one cell of the camera image's grid (0–1) that must change to count as
+    /// motion.
     public var threshold: Double
   }
 
@@ -61,7 +66,9 @@ extension Settings {
     orientation: .any,
     kenBurns: true,
     preloadCount: 3,
-    motion: Motion(enabled: false, checkEveryMinutes: 10, sampleSeconds: 4, threshold: 0.02)
+    motion: Motion(
+      enabled: false, checkEveryMinutes: 5, quickCheckEverySeconds: 15, sampleSeconds: 4,
+      threshold: 0.2)
   )
 
   public static func decode(_ data: Data) throws -> Settings {
@@ -100,6 +107,10 @@ extension Settings {
       ("idleMinutes", idleMinutes, 24 * 60),
       ("slideSeconds", slideSeconds, 60 * 60),
       ("motion.checkEveryMinutes", motion.checkEveryMinutes, 24 * 60),
+      (
+        "motion.quickCheckEverySeconds", motion.quickCheckEverySeconds,
+        motion.checkEveryMinutes * 60
+      ),
       ("motion.sampleSeconds", motion.sampleSeconds, 60),
     ]
     for (key, value, max) in ranges where !(value > 0 && value <= max) {

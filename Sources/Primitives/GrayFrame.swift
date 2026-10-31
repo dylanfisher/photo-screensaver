@@ -27,15 +27,36 @@ public struct GrayFrame: Equatable {
     self.init(width: width, height: height, pixels: pixels)
   }
 
-  /// Fraction of pixels (0–1) whose brightness differs from `other` by more than
-  /// `pixelThreshold`. The threshold keeps sensor noise from counting as change.
-  public func changedFraction(from other: GrayFrame, pixelThreshold: UInt8 = 25) -> Double {
+  /// The largest fraction (0–1) of pixels, within any one cell of a `columns` × `rows` grid, whose
+  /// brightness differs from `other` by more than `pixelThreshold`. Measured per cell so a small or
+  /// distant change isn't diluted by the still rest of the image. The difference in average
+  /// brightness is taken out first, so an exposure shift or a lamp switching on doesn't count as
+  /// change everywhere. The threshold keeps sensor noise from counting as change.
+  public func largestCellChange(
+    from other: GrayFrame, columns: Int, rows: Int, pixelThreshold: UInt8 = 25
+  ) -> Double {
     precondition(width == other.width && height == other.height, "frames must match in size")
-    var changed = 0
-    for i in pixels.indices
-    where abs(Int(pixels[i]) - Int(other.pixels[i])) > Int(pixelThreshold) {
-      changed += 1
+    precondition(
+      (1...width).contains(columns) && (1...height).contains(rows),
+      "grid must fit within the frame")
+    let offset = Int((other.mean - mean).rounded())
+    var changed = [Int](repeating: 0, count: columns * rows)
+    var total = changed
+    for y in 0..<height {
+      let rowStart = (y * rows / height) * columns
+      for x in 0..<width {
+        let cell = rowStart + x * columns / width
+        let i = y * width + x
+        total[cell] += 1
+        if abs(Int(pixels[i]) - Int(other.pixels[i]) + offset) > Int(pixelThreshold) {
+          changed[cell] += 1
+        }
+      }
     }
-    return Double(changed) / Double(pixels.count)
+    return zip(changed, total).map { Double($0) / Double($1) }.max() ?? 0
+  }
+
+  private var mean: Double {
+    Double(pixels.reduce(0) { $0 + Int($1) }) / Double(pixels.count)
   }
 }

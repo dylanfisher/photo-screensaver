@@ -43,9 +43,10 @@ and reloads it on save. Every key is required.
 | `kenBurns` | Slow pan and zoom on each photo. |
 | `preloadCount` | Photos decoded ahead. Each can take 60–160 MB. |
 | `motion.enabled` | Use the camera to sleep the display when no one is around. |
-| `motion.checkEveryMinutes` | Time between camera checks while the slideshow is up. |
-| `motion.sampleSeconds` | How long each check watches, after a 1-second warm-up. |
-| `motion.threshold` | Fraction of the image (0–1) that must change to count as motion. |
+| `motion.checkEveryMinutes` | Time between camera checks while the slideshow is up, and the longest gap while the display is off. |
+| `motion.quickCheckEverySeconds` | Time before a second check confirms an empty room, and the first gap once the display is off. Gaps then double up to `checkEveryMinutes`. Shorter wakes the display sooner but runs the camera more. |
+| `motion.sampleSeconds` | Longest each check watches, after a 1-second warm-up. It stops as soon as it sees motion. |
+| `motion.threshold` | Fraction (0–1) of any one cell of an 8×6 grid over the camera image that must change to count as motion. Lower catches smaller or more distant movement. |
 
 The library index is cached in `~/Library/Caches/photo-screensaver/` and rescanned at launch,
 daily, and from **Rescan Library**.
