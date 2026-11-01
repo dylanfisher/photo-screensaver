@@ -19,6 +19,12 @@ final class AppController: NSObject, NSApplicationDelegate {
   private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "app")
 
   private var settings: Settings?
+  private lazy var settingsWindow = SettingsWindowController(
+    model: SettingsModel { [weak self] in self?.reloadSettingsIfChanged() },
+    actions: SettingsView.Actions(
+      openFile: { [weak self] in self?.openSettingsFile() },
+      revealFile: { NSWorkspace.shared.activateFileViewerSelecting([Settings.fileURL]) },
+      rescan: { [weak self] in self?.rescan() }))
   /// Modification date of the settings file when last read; polled to pick up edits.
   private var settingsModified: Date?
   /// The app's own connection to the library database, for choosing the library folder and
@@ -103,6 +109,7 @@ final class AppController: NSObject, NSApplicationDelegate {
       as? Date
     guard modified != settingsModified else { return }
     settingsModified = modified
+    settingsWindow.fileChanged()
 
     let loaded: Settings
     do {
@@ -723,6 +730,10 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   @objc private func editSettings() {
+    settingsWindow.show()
+  }
+
+  private func openSettingsFile() {
     let textEdit = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
     NSWorkspace.shared.open(
       [Settings.fileURL], withApplicationAt: textEdit, configuration: .init()

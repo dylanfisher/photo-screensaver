@@ -81,7 +81,8 @@ public enum Command: String, CaseIterable, CodingKey {
     }
   }
 
-  private static func describe(seconds: Double) -> String {
+  /// Like "15 seconds" or "5 minutes", for a whole number of seconds or minutes.
+  public static func describe(seconds: Double) -> String {
     let count = Int(seconds)
     if count < 60 { return count == 1 ? "1 second" : "\(count) seconds" }
     let minutes = count / 60

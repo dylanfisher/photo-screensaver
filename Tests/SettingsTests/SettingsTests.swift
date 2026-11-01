@@ -29,6 +29,30 @@ final class SettingsTests: XCTestCase {
     assertFails(json, containing: "unknown keys \"keys.zoom\", \"shuffle\"")
   }
 
+  func testReadListsMissingKeysWithTheirDefaults() throws {
+    var json = try starterJSON()
+    json["timeframe"] = nil
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["pause"] = nil
+    json["keys"] = keys
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("config.json")
+    try JSONSerialization.data(withJSONObject: json).write(to: url)
+
+    guard case .broken(let error, let missing) = Settings.read(at: url) else {
+      return XCTFail("a file with missing keys reads as broken")
+    }
+    XCTAssertTrue(error.contains("missing key"), error)
+    XCTAssertEqual(
+      missing,
+      [
+        Settings.MissingKey(path: "keys.pause", value: "\"space\""),
+        Settings.MissingKey(path: "timeframe", value: "{\"kind\":\"all\"}"),
+      ])
+  }
+
   func testUnknownScalingFails() throws {
     var json = try starterJSON()
     json["scaling"] = "stretch"

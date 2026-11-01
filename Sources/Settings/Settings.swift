@@ -199,6 +199,58 @@ extension Settings {
     try decode(Data(contentsOf: url))
   }
 
+  /// What a config file holds, as the settings window shows it.
+  public enum Read: Equatable {
+    case settings(Settings)
+    /// The file can't be used: why, and the keys it leaves out, if it's a JSON object.
+    case broken(error: String, missing: [MissingKey])
+  }
+
+  /// A key a config file leaves out, with the value it has in `starter`, as JSON.
+  public struct MissingKey: Equatable {
+    /// Like `"keys.pause"`. An object the file leaves out is one key.
+    public let path: String
+    /// Like `"space"`, with the quotes, or `{"kind":"all"}`.
+    public let value: String
+
+    public init(path: String, value: String) {
+      self.path = path
+      self.value = value
+    }
+  }
+
+  public static func read(at url: URL = fileURL) -> Read {
+    let data: Data
+    do {
+      data = try Data(contentsOf: url)
+    } catch {
+      return .broken(error: error.localizedDescription, missing: [])
+    }
+    do {
+      return .settings(try decode(data))
+    } catch {
+      return .broken(error: "\(error)", missing: missingKeys(in: data))
+    }
+  }
+
+  /// The keys of `starter` that `data` leaves out; none if it isn't a JSON object.
+  static func missingKeys(in data: Data) -> [MissingKey] {
+    // Text that isn't JSON has no keys to name, and the decoding error says what's wrong.
+    guard let file = try? JSONSerialization.jsonObject(with: data) else { return [] }
+    do {
+      let defaults = try JSONSerialization.jsonObject(with: starter.encoded())
+      return try keys(in: defaults, notIn: file).map { key in
+        let value = try JSONSerialization.data(
+          withJSONObject: key.value,
+          options: [.sortedKeys, .fragmentsAllowed, .withoutEscapingSlashes])
+        return MissingKey(
+          path: key.path.joined(separator: "."), value: String(decoding: value, as: UTF8.self))
+      }
+    } catch {
+      preconditionFailure("starter's JSON writes back as JSON: \(error)")
+    }
+  }
+
   func validate() throws {
     // Upper bounds keep durations sane, well inside what timers can represent.
     let ranges: [(String, Double, Double)] = [

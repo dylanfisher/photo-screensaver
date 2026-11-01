@@ -62,9 +62,17 @@ location permission.
 
 ## Settings
 
-**Edit Settings…** in the menu opens
-`~/Library/Application Support/photo-screensaver/config.json`. The app creates it on first launch
-and reloads it on save. Every key is required, and a key it doesn't know is an error.
+The settings are in `~/Library/Application Support/photo-screensaver/config.json`. The app
+creates it on first launch and reloads it on save. Every key is required, and a key it doesn't
+know is an error.
+
+**Edit Settings…** in the menu, or ⌘, in the slideshow, opens a window with a control for each
+key below. A change is saved to config.json at once, and an edit to the file shows in the window.
+Number and time fields save on Return or when you leave them. To change a command's key, click
+it and press the new key; Esc cancels, and a key another command has is refused. While
+config.json has an error, the window shows it, with any missing keys and their defaults to
+paste in, and its controls are off until the file is fixed; **Open config.json** opens it in
+TextEdit.
 
 | Key | Meaning |
 |---|---|
