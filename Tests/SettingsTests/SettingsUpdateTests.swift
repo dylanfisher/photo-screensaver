@@ -17,10 +17,9 @@ final class SettingsUpdateTests: XCTestCase {
   }
 
   func testWritesTheChangeInTheFilesFormat() throws {
-    let saved = try Settings.update(at: url) { $0.slideSeconds = 30 }
+    XCTAssertTrue(try Settings.update(at: url) { $0.slideSeconds = 30 })
     var expected = Settings.starter
     expected.slideSeconds = 30
-    XCTAssertEqual(saved, expected)
     XCTAssertEqual(try Data(contentsOf: url), try expected.encoded())
     XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["config.json"])
   }
@@ -33,7 +32,7 @@ final class SettingsUpdateTests: XCTestCase {
     let old = Date(timeIntervalSince1970: 1_000_000)
     try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: url.path)
 
-    try Settings.update(at: url) { $0.slideSeconds = Settings.starter.slideSeconds }
+    XCTAssertFalse(try Settings.update(at: url) { $0.slideSeconds = Settings.starter.slideSeconds })
 
     XCTAssertEqual(try Data(contentsOf: url), compact)
     XCTAssertEqual(try modificationDate(), old)
@@ -41,7 +40,7 @@ final class SettingsUpdateTests: XCTestCase {
 
   func testRedoesTheChangeOnAFileChangedMeanwhile() throws {
     var calls = 0
-    let saved = try Settings.update(at: url) { settings in
+    try Settings.update(at: url) { settings in
       calls += 1
       if calls == 1 {
         // An editor saves between the read and the write.
@@ -52,9 +51,9 @@ final class SettingsUpdateTests: XCTestCase {
       settings.slideSeconds = 30
     }
     XCTAssertEqual(calls, 2)
+    let saved = try Settings.load(at: url)
     XCTAssertEqual(saved.idleMinutes, 9)
     XCTAssertEqual(saved.slideSeconds, 30)
-    XCTAssertEqual(try Settings.load(at: url), saved)
   }
 
   func testGivesUpWhenTheFileChangesUnderEveryTry() throws {
@@ -87,6 +86,21 @@ final class SettingsUpdateTests: XCTestCase {
       XCTAssertTrue("\($0)".contains("transitionSeconds"), "\($0)")
     }
     XCTAssertEqual(try Data(contentsOf: url), try Settings.starter.encoded())
+  }
+
+  func testMissingFileSaysSoInWords() throws {
+    try FileManager.default.removeItem(at: url)
+    XCTAssertThrowsError(try Settings.update(at: url) { $0.slideSeconds = 30 }) { error in
+      XCTAssertTrue("\(error)".hasPrefix("config.json couldn't be read: "), "\(error)")
+      XCTAssertFalse("\(error)".contains("Error Domain"), "\(error)")
+    }
+  }
+
+  func testKeepsOwnerOnlyPermissions() throws {
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    try Settings.update(at: url) { $0.slideSeconds = 30 }
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
   }
 
   func testKeepsPermissions() throws {

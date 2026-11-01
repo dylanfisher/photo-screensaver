@@ -91,7 +91,7 @@ final class SettingsModelTests: XCTestCase {
   }
 
   @MainActor
-  func testChangesAreToldAfterTheyAreWritten() throws {
+  func testOnlyChangesThatWriteAreTold() throws {
     let url = try makeFile()
     var told: [Double] = []
     let model = SettingsModel(fileURL: url) {
@@ -99,7 +99,7 @@ final class SettingsModelTests: XCTestCase {
     }
     model.setNumber(\.idleMinutes, from: "8")
     model.setNumber(\.idleMinutes, from: "8")
-    XCTAssertEqual(told, [8, 8])
+    XCTAssertEqual(told, [8], "a change the file already has isn't told")
   }
 
   @MainActor

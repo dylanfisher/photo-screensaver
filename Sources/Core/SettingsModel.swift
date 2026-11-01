@@ -23,7 +23,7 @@ public final class SettingsModel: ObservableObject {
   @Published public private(set) var refusal: String?
 
   public let fileURL: URL
-  /// Told after each change is written, so the app applies it as it does any edit to the file.
+  /// Told after each change that writes the file, so the app applies it as it does any edit to the file.
   private let changed: @MainActor () -> Void
 
   public init(fileURL: URL = Settings.fileURL, changed: @escaping @MainActor () -> Void) {
@@ -69,8 +69,7 @@ public final class SettingsModel: ObservableObject {
 
   private func write(_ change: (inout Settings) throws -> Void) throws {
     defer { reload() }
-    try Settings.update(at: fileURL, change)
-    changed()
+    if try Settings.update(at: fileURL, change) { changed() }
   }
 
   // MARK: Fields
