@@ -78,8 +78,10 @@ in it is marked and not shown.
 The app opens the database at launch and shows what it has, then rescans. Its own connection
 runs on a serial queue, since opening can rebuild the tables, another folder deletes every row,
 and a count reads every row. New photos join the feed when the walk finishes, before their
-details are read. The feed shuffles row IDs and looks up each path as it loads, so 100k photos
-cost under a megabyte there.
+details are read; on a first scan the feed starts as soon as the first photos are stored. The
+feed shuffles row IDs and looks up each path as it loads, so 100k photos cost under a megabyte
+there. It reads the IDs again for each pass, so a feed started early takes in what the walk
+has added each time it has shown every photo it had.
 
 ## Alternatives considered
 

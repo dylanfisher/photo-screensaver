@@ -21,7 +21,8 @@ public struct FeedError: Error, CustomStringConvertible {
 /// loader decodes at a time, so a slow NAS read never has several full-size images in flight.
 ///
 /// Shuffles the library's photo IDs rather than its rows, so a library of 100k photos costs
-/// under a megabyte here, and looks up each photo's path as it's loaded.
+/// under a megabyte here, and looks up each photo's path as it's loaded. Reads the IDs again for
+/// each pass, so a feed started while the first scan is still adding photos shows them too.
 public actor PhotoFeed {
   /// Unreadable files in a row before giving up, e.g. because the share was unmounted.
   static let maxConsecutiveFailures = 20
@@ -30,8 +31,9 @@ public actor PhotoFeed {
 
   private let library: PhotoLibrary
   private let root: URL
-  /// Nil until the IDs are first needed, and again after `reload()`.
-  private var queue: ShuffleQueue<Int64>?
+  /// This pass's photo IDs not shown yet, in shuffled order, next one last. Every photo is shown
+  /// once before any repeats.
+  private var pending: [Int64] = []
   private let settings: Settings
   private let screenPixels: CGSize
   private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "feed")
@@ -109,10 +111,9 @@ public actor PhotoFeed {
     return photo
   }
 
-  /// Picks up what a scan changed, starting a new shuffle. Photos already decoded are still
-  /// shown.
+  /// Picks up what a scan changed, starting a new pass. Photos already decoded are still shown.
   public func reload() {
-    queue = nil
+    pending = []
   }
 
   /// Frees decoded photos, which can be hundreds of MB, e.g. while the display is off.
@@ -193,9 +194,8 @@ public actor PhotoFeed {
   }
 
   private func nextPhoto() throws -> (Int64, URL)? {
-    var queue = try self.queue ?? ShuffleQueue(library.photoIDs())
-    defer { self.queue = queue }
-    guard let id = queue.next() else {
+    if pending.isEmpty { pending = try library.photoIDs().shuffled() }
+    guard let id = pending.popLast() else {
       throw FeedError(description: "no photos in \(root.path)")
     }
     return try library.photo(id).map { (id, root.appendingPathComponent($0.path)) }

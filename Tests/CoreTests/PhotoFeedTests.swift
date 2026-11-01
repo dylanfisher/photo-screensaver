@@ -129,6 +129,20 @@ final class PhotoFeedTests: XCTestCase {
     XCTAssertEqual(seen, ["a.jpg", "b.jpg"])
   }
 
+  func testEachPassPicksUpWhatAScanAddedWithoutAReload() async throws {
+    try library.jpeg("a.jpg")
+    var settings = Settings.starter
+    settings.preloadCount = 1
+    let feed = try makeFeed(settings)
+    _ = try await feed.next()
+    try library.jpeg("b.jpg")
+    try library.scan()
+    // At most one photo preloaded and one pass of a.jpg alone before the IDs are read again.
+    var seen: Set<String> = []
+    for _ in 0..<4 { seen.insert(try await feed.next().url.lastPathComponent) }
+    XCTAssertTrue(seen.contains("b.jpg"), "\(seen)")
+  }
+
   func testRetriesAfterAFailure() async throws {
     let feed = try makeFeed()
     for _ in 0..<2 {

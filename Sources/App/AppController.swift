@@ -176,8 +176,10 @@ final class AppController: NSObject, NSApplicationDelegate {
     guard scan === self.scan else { return }
     let walkJustFinished = progress.walkFinished && scanProgress?.walkFinished != true
     scanProgress = progress
-    // New photos can be shown from here on, while their details are still being read.
-    if walkJustFinished { refreshPhotos() }
+    // New photos can be shown while their details are still being read: on a first scan, from
+    // the first folder stored, and every photo once the walk has finished. A feed started
+    // early reads the IDs again after each pass, so it shows more as the walk goes on.
+    if walkJustFinished || (feed == nil && progress.photos > 0) { refreshPhotos() }
     updateMenu()
   }
 
