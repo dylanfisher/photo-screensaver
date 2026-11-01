@@ -71,7 +71,7 @@ public enum TimeframePicker {
 
     public private(set) var from: CaptureMonth
     public private(set) var to: CaptureMonth
-    public let bounds: ClosedRange<CaptureMonth>
+    public private(set) var bounds: ClosedRange<CaptureMonth>
 
     /// `from` and `to` are moved into `bounds`, and `to` up to `from`.
     public init(from: CaptureMonth, to: CaptureMonth, bounds: ClosedRange<CaptureMonth>) {
@@ -84,9 +84,7 @@ public enum TimeframePicker {
     /// December of the newest year, since a camera's clock can be ahead. Starts on the
     /// timeframe's months if it's a range, or else on this year so far.
     public init(current: Timeframe, years: [Int], today: CaptureMonth) {
-      let oldest = years.min().map { CaptureMonth(year: $0, month: 1) } ?? today
-      let newest = max(years.max().map { CaptureMonth(year: $0, month: 12) } ?? today, today)
-      let bounds = min(oldest, today)...newest
+      let bounds = Self.bounds(years: years, today: today)
       if case .range(let from, let to) = current {
         self.init(from: from, to: to, bounds: bounds)
       } else {
@@ -95,6 +93,18 @@ public enum TimeframePicker {
     }
 
     public var timeframe: Timeframe { .range(from: from, to: to) }
+
+    /// Changes the bounds for `years`, as when the years arrive after the range opened,
+    /// keeping the months chosen as far as the new bounds allow.
+    public mutating func rebound(years: [Int], today: CaptureMonth) {
+      self = MonthRange(from: from, to: to, bounds: Self.bounds(years: years, today: today))
+    }
+
+    private static func bounds(years: [Int], today: CaptureMonth) -> ClosedRange<CaptureMonth> {
+      let oldest = years.min().map { CaptureMonth(year: $0, month: 1) } ?? today
+      let newest = max(years.max().map { CaptureMonth(year: $0, month: 12) } ?? today, today)
+      return min(oldest, today)...newest
+    }
 
     /// Moves one end by `months`, stopping at the bounds. An end moved past the other takes it
     /// along.

@@ -91,6 +91,20 @@ final class TimeframePickerTests: XCTestCase {
     XCTAssertEqual(empty.bounds, month(2026, 11)...month(2026, 11))
   }
 
+  func testARangeOpenedBeforeTheYearsArriveWidensWhenTheyDo() {
+    let today = month(2026, 11)
+    var range = Range(current: .all, years: [], today: today)
+    XCTAssertEqual(range.bounds, today...today)
+    range.rebound(years: [2009, 2014], today: today)
+    XCTAssertEqual(range.bounds, month(2009, 1)...today)
+    // The months stay where the narrow bounds held them, and can now move back.
+    XCTAssertEqual(range.timeframe, .range(from: today, to: today))
+    range.step(.from, by: -12 * 10)
+    XCTAssertEqual(range.from, month(2016, 11))
+    range.step(.from, by: -12 * 10)
+    XCTAssertEqual(range.from, month(2009, 1))
+  }
+
   private func month(_ year: Int, _ month: Int) -> CaptureMonth {
     CaptureMonth(year: year, month: month)
   }

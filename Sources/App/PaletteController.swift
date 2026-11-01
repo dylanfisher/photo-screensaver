@@ -31,16 +31,28 @@ final class PaletteController {
 
   /// The commands the list shows, filtered.
   private var commands: [Command] = []
+
+  private enum Screen {
+    case commands, timeframes, range
+  }
+
+  /// What the panel shows now. A count that arrives after the user has moved to another
+  /// screen updates what it's about, but only redraws the screen it belongs to.
+  private var screen = Screen.commands
   /// The picker's choices, filtered.
   private var choices: [TimeframePicker.Choice] = []
   private var query = ""
   /// Nil until read, and kept, so going back from the custom range doesn't count again.
   private var counts: TimeframePicker.Counts?
   private var countError: Error?
+  /// Whether the choices are being counted, so going back and forth doesn't count them twice.
+  private var countingChoices = false
   private var range: TimeframePicker.MonthRange?
   private var rangeCount: Int?
   /// Bumped by each step of the range, so only the latest count is shown.
   private var rangeGeneration = 0
+  /// Whether the user has moved the range, which the years arriving then leave as it is.
+  private var rangeStepped = false
 
   init(
     view: PaletteView, keys: Settings.Keys, current: Timeframe, readingDates: Bool,
@@ -56,6 +68,7 @@ final class PaletteController {
   // MARK: Commands
 
   func showCommands() {
+    screen = .commands
     commands = CommandPalette.commands
     view.onQuery = { [weak self] query in self?.filterCommands(query) }
     view.onChoose = { [weak self] index in
@@ -89,6 +102,9 @@ final class PaletteController {
 
   /// Lists the choices at once, with their counts as they arrive.
   func showTimeframes() {
+    screen = .timeframes
+    // A count for the range left behind is for a screen no longer showing.
+    rangeGeneration += 1
     query = ""
     choices = allChoices()
     view.onQuery = { [weak self] query in
@@ -109,29 +125,39 @@ final class PaletteController {
     view.show(
       header: .filter(placeholder: "Choose a timeframe, or type a year"), rows: timeframeRows(),
       selection: selected, footer: timeframeFooter())
-    guard counts == nil else { return }
+    guard counts == nil, countError == nil, !countingChoices else { return }
+    countingChoices = true
     actions.countChoices { [weak self] result in
       guard let self else { return }
+      self.countingChoices = false
       switch result {
       case .success(let counts): self.counts = counts
       case .failure(let error): self.countError = error
       }
-      // The years come after the fixed choices, so a selection the user made stays put. One
-      // still where it opened moves to the current year, now that it's listed.
-      self.choices = self.filtered(self.allChoices())
-      if self.query.isEmpty, self.view.selection == selected,
-        let index = self.choices.firstIndex(of: .timeframe(self.current))
-      {
-        self.view.update(
-          rows: self.timeframeRows(), selection: index, footer: self.timeframeFooter())
-      } else {
-        self.view.update(rows: self.timeframeRows(), footer: self.timeframeFooter())
+      switch self.screen {
+      case .timeframes: self.choicesCounted(selected: selected)
+      case .range: self.yearsArrivedInRange()
+      case .commands: break
       }
     }
   }
 
+  /// Shows the counts in the list. `selected` is where the list opened.
+  private func choicesCounted(selected: Int) {
+    // The years come after the fixed choices, so a selection the user made stays put. One
+    // still where it opened moves to the current year, now that it's listed.
+    choices = filtered(allChoices())
+    if query.isEmpty, view.selection == selected,
+      let index = choices.firstIndex(of: .timeframe(current))
+    {
+      view.update(rows: timeframeRows(), selection: index, footer: timeframeFooter())
+    } else {
+      view.update(rows: timeframeRows(), footer: timeframeFooter())
+    }
+  }
+
   private func allChoices() -> [TimeframePicker.Choice] {
-    TimeframePicker.choices(years: counts.map { Array($0.years.keys) } ?? [])
+    TimeframePicker.choices(years: years())
   }
 
   private func filtered(_ choices: [TimeframePicker.Choice]) -> [TimeframePicker.Choice] {
@@ -193,19 +219,16 @@ final class PaletteController {
   // MARK: Custom range
 
   private func showRange() {
-    let today = Calendar.current.dateComponents([.year, .month], from: Date())
-    guard let year = today.year, let month = today.month else {
-      preconditionFailure("dateComponents gives the components asked for")
-    }
-    range = TimeframePicker.MonthRange(
-      current: current, years: counts.map { Array($0.years.keys) } ?? [],
-      today: CaptureMonth(year: year, month: month))
+    screen = .range
+    rangeStepped = false
+    range = TimeframePicker.MonthRange(current: current, years: years(), today: Self.thisMonth())
     view.onQuery = nil
     view.onStep = { [weak self] row, forward, large in
       guard let self, var range = self.range else { return }
       range.step(row == 0 ? .from : .to, by: (forward ? 1 : -1) * (large ? 12 : 1))
       guard range != self.range else { return }
       self.range = range
+      self.rangeStepped = true
       self.countRange()
     }
     view.onChoose = { [weak self] _ in
@@ -220,6 +243,30 @@ final class PaletteController {
     countRange()
   }
 
+  /// Until the years arrive the range can't leave this month. When they do, it starts again
+  /// from the current timeframe, or keeps the months the user has moved it to.
+  private func yearsArrivedInRange() {
+    if rangeStepped {
+      range?.rebound(years: years(), today: Self.thisMonth())
+    } else {
+      range = TimeframePicker.MonthRange(
+        current: current, years: years(), today: Self.thisMonth())
+    }
+    countRange()
+  }
+
+  private func years() -> [Int] {
+    counts.map { Array($0.years.keys) } ?? []
+  }
+
+  private static func thisMonth() -> CaptureMonth {
+    let today = Calendar.current.dateComponents([.year, .month], from: Date())
+    guard let year = today.year, let month = today.month else {
+      preconditionFailure("dateComponents gives the components asked for")
+    }
+    return CaptureMonth(year: year, month: month)
+  }
+
   private func countRange() {
     guard let range else { return }
     rangeCount = nil
@@ -227,7 +274,7 @@ final class PaletteController {
     let generation = rangeGeneration
     view.update(rows: rangeRows(), footer: rangeFooter())
     actions.count(range.timeframe) { [weak self] result in
-      guard let self, generation == self.rangeGeneration else { return }
+      guard let self, self.screen == .range, generation == self.rangeGeneration else { return }
       switch result {
       case .success(let count):
         self.rangeCount = count
