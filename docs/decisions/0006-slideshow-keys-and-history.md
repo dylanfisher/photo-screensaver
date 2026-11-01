@@ -81,8 +81,8 @@ alone and the error shows on screen.
 ## Consequences
 
 - A speed key rewrites config.json in the app's own format: pretty-printed, keys sorted.
-- A key bound with ⌘ depends on AppKit passing an unhandled key equivalent on as a key press,
-  which the ⌘K command list will exercise first.
+- A key with ⌘ or ⌃ reaches the window as a key equivalent before it's a key press, so the
+  window takes those in `performKeyEquivalent` and decides them the same way (ADR 0008).
 - Going back to a photo a rescan removed shows an error in the menu and leaves the current photo
   up; the next step moves past it.
 - History starts again when the library folder changes, since its IDs belong to the old

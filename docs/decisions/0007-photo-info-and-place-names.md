@@ -21,6 +21,11 @@ fails, the panel shows the coordinates, and the name replaces them in place. Onl
 go to Apple. `CLGeocoder` doesn't use the Mac's location, so it needs no location permission and
 no Info.plist key; the app isn't sandboxed, so it needs no network entitlement either.
 
+**Wait a second before asking.** A lookup for a place not in the cache waits a second first, so
+stepping quickly through photos with the panel open, which cancels each lookup, sends nothing
+for the photos passed by. A cached name still shows at once, and the cache is checked again
+after the wait, since a nearby photo may have filled it meanwhile.
+
 **Cache names in `places`, keyed by coordinates rounded to 0.01°.** That's about 1.1 km north to
 south, less east to west away from the equator. Photos from one trip cluster, so most of them
 share a lookup, and at the level a short name shows (a park, a neighborhood, a city) a cell
@@ -59,15 +64,16 @@ closes it or the app quits.
   next time the photo shows costs one request.
 - **Rounding to 0.1° (about 11 km)** — rejected: a cell would hold several neighborhoods and parks
   under one name.
-- **A delay before geocoding, to skip photos stepped past quickly** — not done: each step cancels
-  the lookup before it, and a delay would hold up every name.
+- **No delay before geocoding** — rejected: each step cancels the lookup before it, but a
+  request already sent still counts against the rate limit. The wait holds up each new name by
+  a second, which with the panel open is hardly noticed.
 - **MapKit's `MKReverseGeocodingRequest`** — not on macOS 12. `CLGeocoder` is deprecated in the
   macOS 26 SDK but available on 12, which is what the app targets.
 
 ## Consequences
 
-- With the panel open, each new photo with a location in a cell not yet looked up costs one
-  request. Stepping fast through such photos can reach Apple's rate limit; the panel then shows
-  coordinates until a later lookup succeeds.
+- With the panel open, each new photo with a location in a cell not yet looked up, and on screen
+  for a second, costs one request. Stepping through such photos a second or more apart can still
+  reach Apple's rate limit; the panel then shows coordinates until a later lookup succeeds.
 - Place names are in the language of the Mac when they were looked up, and stay so.
 - A photo removed by a rescan while on screen closes the panel's content until the next photo.

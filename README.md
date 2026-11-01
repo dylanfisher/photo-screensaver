@@ -34,10 +34,25 @@ While the slideshow shows, these keys work, and each can be changed under `keys`
 | → | `next` | Shows the next photo. After going back, steps forward through those photos first. |
 | ← | `previous` | Goes back through the photos shown before. |
 | ↑ | `info` | Shows or hides the photo's details in the bottom-left corner: where and when it was taken, camera, lens, exposure, size, and its folder and file name. It stays open from photo to photo until pressed again. |
+| Space | `pause` | Stops the slideshow on the photo it's on, or starts it again. Each slideshow starts playing. |
+| T | `timeframe` | Chooses which photos show by when they were taken (below). |
 | 1–5 | `speed1` … `speed5` | Shows each photo for 5 s, 15 s, 30 s, 1 min or 5 min, and saves that as `slideSeconds`. |
+| ⌘R | `rescan` | Rescans the library, like **Rescan Library** in the menu. |
+| ⌘, | `settings` | Ends the slideshow and opens the settings. |
+| ⌘K | `palette` | Lists every command with its key, to run one by name. |
 
 Moving to another photo, or changing speed, gives the photo on screen a full `slideSeconds`.
 While the display is off, any key wakes it to the desktop.
+
+In the ⌘K list, type to narrow it, ↑/↓ to choose, and Return to run; Escape or a click outside
+closes it. While it's open the slideshow waits, keys go to the list, and the pointer can be used
+without ending the slideshow.
+
+The timeframe picker lists all time, on this day (three days either side of today's date, in
+every year), the last 12 months, each year with photos, and a custom range of months, each with
+how many photos it shows. Type to narrow it, such as a year. In the custom range, ←/→ change a
+month, Shift+←/→ a year, and Return shows those photos. A choice is saved as `timeframe`, and the
+menu shows it. Photos without a capture date show only under all time.
 
 The info panel shows a photo's place as a name like "Shibuya, Tokyo, Japan". For that, the app
 sends the photo's GPS coordinates, and nothing else, to Apple's geocoding service, only for the
@@ -69,6 +84,7 @@ and reloads it on save. Every key is required.
 | `motion.threshold` | Fraction (0–1) of any one cell of an 8×6 grid over the camera image that must change to count as motion. Lower catches smaller or more distant movement. |
 | `offHours.enabled` | Turn the slideshow off for part of each day. |
 | `offHours.start`, `offHours.end` | 24-hour local times like `"00:00"` and `"09:00"`. A start later than the end spans midnight. In between, the slideshow doesn't start and the camera stays off. A slideshow that's showing when they begin stops, and the display sleeps. Choosing **Show Slideshow** still works. |
+| `timeframe` | Which photos show, by capture date: `{"kind": "all"}`, `{"kind": "onThisDay"}`, `{"kind": "lastMonths", "months": 12}`, or `{"kind": "range", "from": "2014-01", "to": "2014-12"}`, with only that kind's fields. The picker (T) writes it. |
 | `keys.<command>` | Key for each command in the table above, like `"right"`, `"1"` or `"cmd+k"`: modifiers (`ctrl`, `option`, `shift`, `cmd`) joined by `+`, then one character or `left`, `right`, `up`, `down`, `space`, `tab`, `return`, `escape`, `delete`, `forwarddelete` or `plus` (the keypad's +; the + over = is `"shift+="`). A character names the key that types it on a US keyboard without Shift, whatever layout the Mac uses: `"1"` is the key left of 2 even where it types `&`, and `!` is `"shift+1"`. Every command needs a key, and no two can share one. |
 
 The library database, `~/Library/Caches/photo-screensaver/library.sqlite`, is rescanned at
