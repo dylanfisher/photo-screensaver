@@ -33,10 +33,17 @@ While the slideshow shows, these keys work, and each can be changed under `keys`
 |---|---|---|
 | → | `next` | Shows the next photo. After going back, steps forward through those photos first. |
 | ← | `previous` | Goes back through the photos shown before. |
+| ↑ | `info` | Shows or hides the photo's details in the bottom-left corner: where and when it was taken, camera, lens, exposure, size, and its folder and file name. It stays open from photo to photo until pressed again. |
 | 1–5 | `speed1` … `speed5` | Shows each photo for 5 s, 15 s, 30 s, 1 min or 5 min, and saves that as `slideSeconds`. |
 
 Moving to another photo, or changing speed, gives the photo on screen a full `slideSeconds`.
 While the display is off, any key wakes it to the desktop.
+
+The info panel shows a photo's place as a name like "Shibuya, Tokyo, Japan". For that, the app
+sends the photo's GPS coordinates, and nothing else, to Apple's geocoding service, only for the
+photo on screen while the panel is open, and keeps the name in the library database so nearby
+photos don't ask again. Until a name arrives, or offline, it shows the coordinates. It needs no
+location permission.
 
 ## Settings
 

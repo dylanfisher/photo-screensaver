@@ -18,6 +18,7 @@ final class SlideshowWindow {
   private let messageText = CATextLayer()
   /// Bumped by each message, so only the latest one's timer fades it.
   private var messageCount = 0
+  private let info: InfoPanel
 
   /// Called with each key press, including repeats from a key held down.
   var onKey: ((NSEvent) -> Void)? {
@@ -45,6 +46,7 @@ final class SlideshowWindow {
     root.backgroundColor = .black
     root.masksToBounds = true
     window.contentView = view
+    info = InfoPanel(screen: screen)
 
     // Above every photo, which are added later.
     message.zPosition = 1
@@ -54,6 +56,9 @@ final class SlideshowWindow {
     messageText.contentsScale = screen.backingScaleFactor
     message.addSublayer(messageText)
     root.addSublayer(message)
+    // Above the message too. The two don't overlap, but the panel is what was asked for last.
+    info.layer.zPosition = 2
+    root.addSublayer(info.layer)
   }
 
   /// Activates the app, since macOS ignores cursor hiding from a background app, and makes the
@@ -208,6 +213,15 @@ final class SlideshowWindow {
       fadeOut.duration = 0.5
       self.message.add(fadeOut, forKey: "fade")
     }
+  }
+
+  /// Shows the photo info panel with `info`, or changes what it shows.
+  func showInfo(_ info: PhotoInfo) {
+    self.info.show(info, in: root.bounds)
+  }
+
+  func hideInfo() {
+    info.hide()
   }
 
   /// Size of the screen in pixels, which photos are decoded against.

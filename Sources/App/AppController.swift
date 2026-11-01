@@ -41,6 +41,14 @@ final class AppController: NSObject, NSApplicationDelegate {
   /// The photo in `window`, so stepping back to it, or changing speed, doesn't decode it again.
   private var shownID: Int64?
   private var slideTask: Task<Void, Never>?
+  /// Whether the photo info panel is open. Not saved: it stays open across photos, and across
+  /// slideshows, until its key closes it or the app quits.
+  private var infoOpen = false
+  /// Looks up what the info panel shows; opened with the library.
+  private var details: PhotoDetails?
+  /// Fills the info panel for the photo on screen. Each new photo cancels it and starts another,
+  /// so a slow lookup for an earlier photo never shows over a later one.
+  private var infoTask: Task<Void, Never>?
   private var motionTask: Task<Void, Never>?
   /// Uptime when the scheduled motion check starts; until then its task is only waiting.
   private var motionCheckAt: Double?
@@ -142,12 +150,16 @@ final class AppController: NSObject, NSApplicationDelegate {
     libraryGeneration += 1
     let generation = libraryGeneration
     photoCount = 0
+    details = nil
     rebuildFeed()
     library.open(root: settings.libraryURL) { result in
       guard generation == self.libraryGeneration else { return }
       self.record("database") {
         self.photoCount = try result.get()
         self.libraryOpen = true
+        self.details = try PhotoDetails(
+          databaseURL: PhotoLibrary.defaultURL, root: settings.libraryURL,
+          geocoder: AppleGeocoder())
       }
       self.rebuildFeed()
       self.rescan()
@@ -339,6 +351,8 @@ final class AppController: NSObject, NSApplicationDelegate {
       startSlides()
     case .stopSlideshow:
       stopSlides()
+      infoTask?.cancel()
+      infoTask = nil
       window?.close()
       window = nil
       shownID = nil
@@ -400,6 +414,7 @@ final class AppController: NSObject, NSApplicationDelegate {
               if history.target == .new { history.add(photo.id) }
               window.show(photo, settings: settings)
               shownID = photo.id
+              updateInfo()
             }
             errors["photos"] = nil
           } catch is CancellationError {
@@ -428,11 +443,76 @@ final class AppController: NSObject, NSApplicationDelegate {
     case .previous:
       guard history.back() else { return }
       runSlides()
+    case .info:
+      infoOpen.toggle()
+      if infoOpen {
+        updateInfo()
+      } else {
+        infoTask?.cancel()
+        infoTask = nil
+        window?.hideInfo()
+      }
     case .speed1, .speed2, .speed3, .speed4, .speed5:
       guard let seconds = command.slideSeconds else {
         preconditionFailure("every speed command sets slideSeconds")
       }
       setSpeed(seconds, title: command.title)
+    }
+  }
+
+  /// Shows what's known about the photo on screen in the info panel, if it's open: at once from
+  /// the database, then again as the photo's details are read, if the scan hasn't read them
+  /// yet, and as its place name arrives. Only the photo on screen is ever geocoded.
+  private func updateInfo() {
+    infoTask?.cancel()
+    infoTask = nil
+    guard infoOpen, let id = shownID, let details, let window else { return }
+    infoTask = Task {
+      // Until the panel shows this photo, it still shows the previous one's info, which an
+      // error must not leave up.
+      var shown = false
+      do {
+        guard let photo = try await details.photo(id) else {
+          // A rescan removed it while it was on screen: there's nothing to show.
+          if !Task.isCancelled { window.hideInfo() }
+          return
+        }
+        guard !Task.isCancelled else { return }
+        var metadata = photo.metadata
+        if metadata == nil {
+          window.showInfo(PhotoInfo(path: photo.path, metadata: nil, place: nil))
+          shown = true
+          metadata = try await details.readMetadata(of: photo)
+          guard !Task.isCancelled else { return }
+        }
+        var place: CachedPlace?
+        if let latitude = metadata?.latitude, let longitude = metadata?.longitude {
+          place = try await details.cachedPlace(latitude: latitude, longitude: longitude)
+          guard !Task.isCancelled else { return }
+        }
+        window.showInfo(PhotoInfo(path: photo.path, metadata: metadata, place: place?.name))
+        shown = true
+        errors["info"] = nil
+        guard place == nil, let latitude = metadata?.latitude, let longitude = metadata?.longitude
+        else { return }
+        do {
+          place = try await details.lookUpPlace(latitude: latitude, longitude: longitude)
+        } catch {
+          // The coordinates stay up, and the next time the photo shows tries again. Not in
+          // the menu: offline, this would be every photo with a location.
+          if !Task.isCancelled {
+            log.notice(
+              "no place name for photo \(id, privacy: .public): \(error, privacy: .public)")
+          }
+          return
+        }
+        guard !Task.isCancelled else { return }
+        window.showInfo(PhotoInfo(path: photo.path, metadata: metadata, place: place?.name))
+      } catch {
+        guard !Task.isCancelled else { return }
+        if !shown { window.hideInfo() }
+        errors["info"] = "Photo info: \(error)"
+      }
     }
   }
 

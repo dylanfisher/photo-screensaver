@@ -2,6 +2,8 @@
 /// `keys` setting, and every command must have a key there.
 public enum Command: String, CaseIterable, CodingKey {
   case next, previous
+  /// Shows or hides the photo info panel.
+  case info
   case speed1, speed2, speed3, speed4, speed5
 
   /// Shown wherever commands are listed, and on screen when a speed is chosen.
@@ -9,6 +11,7 @@ public enum Command: String, CaseIterable, CodingKey {
     switch self {
     case .next: return "Next Photo"
     case .previous: return "Previous Photo"
+    case .info: return "Show Photo Info"
     case .speed1, .speed2, .speed3, .speed4, .speed5:
       guard let seconds = slideSeconds else {
         preconditionFailure("every speed command sets slideSeconds")
@@ -22,6 +25,7 @@ public enum Command: String, CaseIterable, CodingKey {
     switch self {
     case .next: return KeySpec(.named(.right))
     case .previous: return KeySpec(.named(.left))
+    case .info: return KeySpec(.named(.up))
     case .speed1: return KeySpec(.character("1"))
     case .speed2: return KeySpec(.character("2"))
     case .speed3: return KeySpec(.character("3"))
@@ -39,7 +43,7 @@ public enum Command: String, CaseIterable, CodingKey {
     case .speed3: return 30
     case .speed4: return 60
     case .speed5: return 300
-    case .next, .previous: return nil
+    case .next, .previous, .info: return nil
     }
   }
 
@@ -48,7 +52,7 @@ public enum Command: String, CaseIterable, CodingKey {
   public var repeats: Bool {
     switch self {
     case .next, .previous: return true
-    case .speed1, .speed2, .speed3, .speed4, .speed5: return false
+    case .info, .speed1, .speed2, .speed3, .speed4, .speed5: return false
     }
   }
 

@@ -20,12 +20,14 @@ final class CommandTests: XCTestCase {
   func testOnlyStepsRepeat() {
     XCTAssertTrue(Command.next.repeats)
     XCTAssertTrue(Command.previous.repeats)
+    XCTAssertFalse(Command.info.repeats)
     XCTAssertFalse(Command.speed2.repeats)
   }
 
   func testDefaultKeys() {
     XCTAssertEqual(Command.next.defaultKey.description, "right")
     XCTAssertEqual(Command.previous.defaultKey.description, "left")
+    XCTAssertEqual(Command.info.defaultKey.description, "up")
     XCTAssertEqual(Command.speed3.defaultKey.description, "3")
   }
 }
