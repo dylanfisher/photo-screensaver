@@ -28,9 +28,11 @@ side by side; the photos are drawn as before.
 
 **While it's open, the palette has the keyboard and the mouse can't end the slideshow.** The
 slide timer stops after showing the photo it's on, and closing gives that photo a whole slide.
-The idle check is skipped, and closing resets the time input is counted from, so moving the
-pointer to click a row doesn't end the slideshow a second later. The pointer shows while it's
-open.
+The idle check leaves out the pointer, and closing resets the time input is counted from, so
+moving the pointer to click a row doesn't end the slideshow a second later. Keys still count
+whenever the window doesn't get them, as after ⌘Tab to another app. The pointer shows while it's
+open. With no input of any kind for 60 seconds the palette closes, so one left open doesn't hold
+a photo, and a lit display, for good.
 
 **Keys with ⌘ or ⌃ go through `performKeyEquivalent`.** AppKit offers those keys to the window
 as key equivalents before anything else, and what reaches `keyDown` afterwards depends on the
