@@ -11,6 +11,9 @@ final class SlideshowWindow {
   private let window: KeyWindow
   private let root = CALayer()
   private var current: CALayer?
+  /// The photo fading out under `current`. A new photo removes it at once, so stepping fast
+  /// never holds more than two decoded photos, at 60–160 MB each.
+  private var outgoing: CALayer?
   private let message = CALayer()
   private let messageText = CATextLayer()
   /// Bumped by each message, so only the latest one's timer fades it.
@@ -67,8 +70,10 @@ final class SlideshowWindow {
     window.orderOut(nil)
     NSCursor.unhide()
     NSApp.hide(nil)
-    current?.removeFromSuperlayer()
+    discard(current)
+    discard(outgoing)
     current = nil
+    outgoing = nil
   }
 
   func show(_ photo: Photo, settings: Settings) {
@@ -114,12 +119,13 @@ final class SlideshowWindow {
       layer.add(fadeIn, forKey: "fade")
     }
 
+    discard(outgoing)
+    outgoing = nil
     // Fade the old photo out too: in `fit` mode the new one may not cover it.
     if let previous = current {
       CATransaction.begin()
       CATransaction.setDisableActions(true)
       previous.opacity = 0
-      if fade == 0 { previous.removeFromSuperlayer() }
       CATransaction.commit()
       if fade > 0 {
         let fadeOut = CABasicAnimation(keyPath: "opacity")
@@ -127,12 +133,27 @@ final class SlideshowWindow {
         fadeOut.toValue = 0
         fadeOut.duration = fade
         previous.add(fadeOut, forKey: "fade")
-        DispatchQueue.main.asyncAfter(deadline: .now() + fade) {
-          previous.removeFromSuperlayer()
+        outgoing = previous
+        // Weak, so a photo a newer one already removed isn't kept until this runs.
+        DispatchQueue.main.asyncAfter(deadline: .now() + fade) { [weak self, weak previous] in
+          guard let self, let previous, previous === self.outgoing else { return }
+          self.discard(previous)
+          self.outgoing = nil
         }
+      } else {
+        discard(previous)
       }
     }
     current = layer
+  }
+
+  /// Takes a photo off screen and lets go of its pixels.
+  private func discard(_ layer: CALayer?) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    layer?.removeFromSuperlayer()
+    layer?.contents = nil
+    CATransaction.commit()
   }
 
   /// Restarts the current photo's pan from where it is, to last a slide of the new length and
