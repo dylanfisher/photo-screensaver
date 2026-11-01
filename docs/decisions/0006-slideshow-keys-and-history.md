@@ -50,7 +50,10 @@ preload under way and holding off the next one, so there is still one decode at 
 **Every step restarts the slide loop.** Each command moves the target and restarts the loop,
 which shows the target and then waits a full slide. A load still running for an earlier step is
 cancelled, so holding ← decodes the photo it stops on, plus at most the one already being
-decoded. A target that is already on screen isn't decoded again.
+decoded. A target that is already on screen isn't decoded again. A new photo that arrives just
+as a step cancels its load goes back to the feed for the next loop. The window keeps at most
+two photo layers, the one showing and the one fading out, so stepping faster than the fade
+doesn't pile up decoded photos.
 
 **Speed keys save through the file.** A speed key reads config.json, sets `slideSeconds`, and
 writes it back whole, only if it's still valid; then the app reloads it like any edit. The
