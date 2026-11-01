@@ -28,8 +28,9 @@ final class AppController: NSObject, NSApplicationDelegate {
       openFile: { [weak self] in self?.openSettingsFile() },
       revealFile: { NSWorkspace.shared.activateFileViewerSelecting([Settings.fileURL]) },
       rescan: { [weak self] in self?.rescan() }))
-  /// Modification date of the settings file when last read; polled to pick up edits.
-  private var settingsModified: Date?
+  /// The settings file's bytes when last read, or nil if it couldn't be; polled to pick up
+  /// edits.
+  private var settingsBytes: Data?
   /// The app's own connection to the library database, for choosing the library folder and
   /// counting its photos. The scan and the feed open their own.
   private let library = LibraryConnection()
@@ -104,19 +105,20 @@ final class AppController: NSObject, NSApplicationDelegate {
 
   // MARK: Settings and library
 
-  /// Polling one local file each second is cheap, and unlike a folder watch it also catches
-  /// editors that rewrite the file in place.
+  /// Reading one small local file each second is cheap, and unlike a folder watch it also
+  /// catches editors that rewrite the file in place. The bytes are compared, not the
+  /// modification date, which HFS+ keeps to the second: a second save within the same second,
+  /// such as two speed keys pressed quickly, would otherwise go unseen.
   private func reloadSettingsIfChanged() {
-    let modified =
-      try? FileManager.default.attributesOfItem(atPath: Settings.fileURL.path)[.modificationDate]
-      as? Date
-    guard modified != settingsModified else { return }
-    settingsModified = modified
+    let bytes = try? Data(contentsOf: Settings.fileURL)
+    guard bytes != settingsBytes else { return }
+    settingsBytes = bytes
     settingsWindow.fileChanged()
 
     let loaded: Settings
     do {
-      loaded = try Settings.load()
+      // Reading it again for a file that's gone gives the error to show.
+      loaded = try bytes.map(Settings.decode) ?? Settings.load()
       errors["settings"] = nil
     } catch {
       // Keep running on the last good settings; the menu shows what's wrong.

@@ -46,8 +46,9 @@ nothing except keys decoding doesn't read, which `Decodable` ignores. Decoding n
 file's keys with the decoded settings' own encoding and names any extra key, as the timeframe
 object already did for its fields. A file that can be written has nothing to drop.
 
-**The window shows the file.** The app already polls config.json's modification date each
-second; when it changes, the open window reads the file again. Writes are synchronous on the
+**The window shows the file.** The app already reads config.json each second and compares its
+bytes, since HFS+ keeps modification dates to the second and a second save within it would go
+unseen; when they change, the open window reads the file again. Writes are synchronous on the
 main thread, since the file is small and local, and the model reads the file back before
 `change` returns, so a toggle shows the written value at once and never flicks back. After a
 write the app reloads the file through the same path as any edit, so there is one way a setting
