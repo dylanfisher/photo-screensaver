@@ -70,6 +70,17 @@ final class KeySpecTests: XCTestCase {
     }
   }
 
+  func testSymbolsAreWrittenAsMacMenusShowThem() throws {
+    let cases = [
+      ("cmd+k", "⌘K"), ("right", "→"), ("up", "↑"), ("1", "1"), ("space", "Space"),
+      ("cmd+,", "⌘,"), ("shift+cmd+r", "⇧⌘R"), ("cmd+option+ctrl+shift+left", "⌃⌥⇧⌘←"),
+      ("escape", "Esc"), ("return", "↩"), ("delete", "⌫"), ("plus", "Keypad +"),
+    ]
+    for (text, symbols) in cases {
+      XCTAssertEqual(try KeySpec(parsing: text).symbols, symbols, text)
+    }
+  }
+
   func testEveryCharacterKeyParsesBack() throws {
     for code in UInt16(0)...127 {
       guard let key = KeySpec.Key(keyCode: code) else { continue }

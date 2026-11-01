@@ -33,14 +33,20 @@ final class AppController: NSObject, NSApplicationDelegate {
   private var scan: LibraryScan?
   private var scanProgress: LibraryScan.Progress?
   private var presence = Presence.desktop
-  /// Uptime when `presence` last changed. Uptime, like the input idle time it's compared with,
-  /// stops while the Mac sleeps; wall-clock time doesn't.
+  /// Uptime when `presence` last changed, or the palette closed: input before then doesn't
+  /// count as the user coming back. Uptime, like the input idle time it's compared with, stops
+  /// while the Mac sleeps; wall-clock time doesn't.
   private var enteredAt = ProcessInfo.processInfo.systemUptime
   private var window: SlideshowWindow?
   private var history = SlideHistory()
   /// The photo in `window`, so stepping back to it, or changing speed, doesn't decode it again.
   private var shownID: Int64?
   private var slideTask: Task<Void, Never>?
+  /// Whether the slide timer is stopped by the pause key. Each slideshow starts playing.
+  private var paused = false
+  /// The open palette. While it's open the slide timer waits, keys go to it, and the mouse
+  /// doesn't end the slideshow.
+  private var palette: PaletteController?
   /// Whether the photo info panel is open. Not saved: it stays open across photos, and across
   /// slideshows, until its key closes it or the app quits.
   private var infoOpen = false
@@ -268,6 +274,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         send(.userIdle)
       }
     case .showing, .displayOff:
+      // The pointer shows to use the palette with.
+      guard palette == nil else { return }
       if idle < ProcessInfo.processInfo.systemUptime - enteredAt - Self.inputGraceSeconds {
         send(.userActive)
       }
@@ -275,6 +283,7 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   private func handleKey(_ event: NSEvent) {
+    if let palette { return palette.handleShortcut(event) }
     let bound = KeySpec(event).flatMap { settings?.keys.command(for: $0) }
     let inGracePeriod =
       ProcessInfo.processInfo.systemUptime - enteredAt <= Self.inputGraceSeconds
@@ -347,11 +356,14 @@ final class AppController: NSObject, NSApplicationDelegate {
       errors["screen"] = nil
       let window = SlideshowWindow(screen: screen)
       window.onKey = { [weak self] event in self?.handleKey(event) }
+      window.onClickOutsidePalette = { [weak self] in self?.closePalette() }
       window.open()
       self.window = window
+      paused = false
       keepAwake(display: true)
       startSlides()
     case .stopSlideshow:
+      closePalette(resuming: false)
       stopSlides()
       infoTask?.cancel()
       infoTask = nil
@@ -360,6 +372,7 @@ final class AppController: NSObject, NSApplicationDelegate {
       shownID = nil
       keepAwake(display: false)
     case .pauseSlideshow:
+      closePalette(resuming: false)
       stopSlides()
       keepAwake(display: false)
     case .resumeSlideshow:
@@ -430,6 +443,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         } else {
           errors["photos"] = "No photos to show yet; waiting for the library scan"
         }
+        // Paused, the photo stays until a step, or until resuming restarts the loop.
+        if paused || palette != nil { return }
         try? await Task.sleep(nanoseconds: UInt64(settings.slideSeconds * 1e9))
         if Task.isCancelled { return }
         history.forward()
@@ -459,7 +474,55 @@ final class AppController: NSObject, NSApplicationDelegate {
         preconditionFailure("every speed command sets slideSeconds")
       }
       setSpeed(seconds, title: command.title)
+    case .pause:
+      paused.toggle()
+      // Paused, the loop stops after showing the photo it's on; playing, it gives that photo
+      // a whole slide.
+      runSlides()
+      window?.showMessage(paused ? "Paused" : "Playing")
+    case .rescan:
+      if scan != nil {
+        window?.showMessage("Already scanning the library")
+      } else if libraryOpen {
+        rescan()
+        window?.showMessage("Rescanning the library")
+      } else {
+        window?.showMessage("No library to scan yet")
+      }
+    case .settings:
+      // Back to the desktop first, where the settings open.
+      send(.userActive)
+      editSettings()
+    case .palette:
+      openPalette()
     }
+  }
+
+  private func openPalette() {
+    guard palette == nil, let window, let settings else { return }
+    let palette = PaletteController(
+      view: window.palette, keys: settings.keys,
+      run: { [weak self] command in
+        self?.closePalette()
+        self?.run(command)
+      },
+      close: { [weak self] in self?.closePalette() })
+    self.palette = palette
+    window.openPalette()
+    palette.showCommands()
+    // The loop stops once it has shown the photo it's on.
+    runSlides()
+  }
+
+  /// Closes the palette if it's open, and unless `resuming` is false, restarts the slide timer
+  /// with a whole slide for the photo on screen, unless paused.
+  private func closePalette(resuming: Bool = true) {
+    guard palette != nil else { return }
+    palette = nil
+    window?.closePalette()
+    // Moving the mouse to use the palette doesn't end the slideshow once it closes.
+    enteredAt = ProcessInfo.processInfo.systemUptime
+    if resuming, !paused { runSlides() }
   }
 
   /// Shows what's known about the photo on screen in the info panel, if it's open: at once from

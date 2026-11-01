@@ -129,6 +129,34 @@ public struct KeySpec: Hashable, Codable, CustomStringConvertible {
     return (modifierNames + [keyName]).joined(separator: "+")
   }
 
+  /// The key as macOS menus show it, like "⇧⌘K", "→" or "Space": modifier symbols in menu
+  /// order, then the key, with letters in capitals.
+  public var symbols: String {
+    let modifierSymbols: [(Modifiers, String)] = [
+      (.ctrl, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.cmd, "⌘"),
+    ]
+    let held = modifierSymbols.filter { modifiers.contains($0.0) }.map(\.1).joined()
+    let keySymbol: String
+    switch key {
+    case .named(let name):
+      switch name {
+      case .left: keySymbol = "←"
+      case .right: keySymbol = "→"
+      case .up: keySymbol = "↑"
+      case .down: keySymbol = "↓"
+      case .space: keySymbol = "Space"
+      case .tab: keySymbol = "⇥"
+      case .escape: keySymbol = "Esc"
+      case .delete: keySymbol = "⌫"
+      case .return: keySymbol = "↩"
+      case .plus: keySymbol = "Keypad +"
+      case .forwardDelete: keySymbol = "⌦"
+      }
+    case .character(let character): keySymbol = character.uppercased()
+    }
+    return held + keySymbol
+  }
+
   public init(from decoder: Decoder) throws {
     let container = try decoder.singleValueContainer()
     do {

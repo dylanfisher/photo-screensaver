@@ -19,12 +19,20 @@ final class SlideshowWindow {
   /// Bumped by each message, so only the latest one's timer fades it.
   private var messageCount = 0
   private let info: InfoPanel
+  /// The command list and timeframe picker, over the photos. Hidden until opened.
+  let palette = PaletteView()
 
-  /// Called with each key press, including repeats from a key held down.
+  /// Called with each key press that reaches the window, including repeats from a key held
+  /// down, and every key with ⌘ or ⌃, even while the palette has the keyboard.
   var onKey: ((NSEvent) -> Void)? {
     get { window.onKey }
     set { window.onKey = newValue }
   }
+
+  /// Called for a click outside the palette while it's open.
+  var onClickOutsidePalette: (() -> Void)?
+
+  var paletteIsOpen: Bool { !palette.isHidden }
 
   /// Whether key presses reach this window: it's the key window of the active app.
   var getsKeys: Bool { NSApp.isActive && window.isKeyWindow }
@@ -39,13 +47,21 @@ final class SlideshowWindow {
     window.isReleasedWhenClosed = false
     window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
-    let view = NSView(frame: CGRect(origin: .zero, size: screen.frame.size))
+    let bounds = CGRect(origin: .zero, size: screen.frame.size)
+    // The photos are a layer-hosting view, which can't have subviews, so the palette's
+    // controls go beside it in a plain view.
+    let container = BackdropView(frame: bounds)
+    container.wantsLayer = true
+    let photos = NSView(frame: bounds)
+    photos.autoresizingMask = [.width, .height]
     // Layer-hosting: assign the layer before turning layers on, or AppKit manages it instead.
-    view.layer = root
-    view.wantsLayer = true
+    photos.layer = root
+    photos.wantsLayer = true
     root.backgroundColor = .black
     root.masksToBounds = true
-    window.contentView = view
+    container.addSubview(photos)
+    container.addSubview(palette)
+    window.contentView = container
     info = InfoPanel(screen: screen)
 
     // Above every photo, which are added later.
@@ -59,6 +75,11 @@ final class SlideshowWindow {
     // Above the message too. The two don't overlap, but the panel is what was asked for last.
     info.layer.zPosition = 2
     root.addSublayer(info.layer)
+
+    container.onClick = { [weak self] in
+      guard let self, self.paletteIsOpen else { return }
+      self.onClickOutsidePalette?()
+    }
   }
 
   /// Activates the app, since macOS ignores cursor hiding from a background app, and makes the
@@ -72,6 +93,7 @@ final class SlideshowWindow {
 
   /// Hides the app again, which hands focus back to whatever was in front before.
   func close() {
+    closePalette()
     window.orderOut(nil)
     NSCursor.unhide()
     NSApp.hide(nil)
@@ -224,6 +246,22 @@ final class SlideshowWindow {
     info.hide()
   }
 
+  /// Shows the palette, with the pointer, so its rows can be clicked. `PaletteController`
+  /// fills it.
+  func openPalette() {
+    guard !paletteIsOpen else { return }
+    palette.isHidden = false
+    NSCursor.unhide()
+  }
+
+  /// Hides the palette and the pointer again, and gives the keyboard back to the window.
+  func closePalette() {
+    guard paletteIsOpen else { return }
+    palette.isHidden = true
+    window.makeFirstResponder(nil)
+    NSCursor.hide()
+  }
+
   /// Size of the screen in pixels, which photos are decoded against.
   static func pixelSize(of screen: NSScreen) -> CGSize {
     CGSize(
@@ -246,5 +284,26 @@ private final class KeyWindow: NSWindow {
 
   override func keyDown(with event: NSEvent) {
     onKey?(event)
+  }
+
+  /// AppKit offers a key with ⌘ or ⌃ here before anything else, as a possible menu shortcut,
+  /// and what reaches `keyDown` afterwards depends on the menus and the first responder. Taking
+  /// every such key here gives a bound one its command and an unbound one the same exit as any
+  /// other key, and keeps them from the palette's text field, which can't use them.
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    guard event.type == .keyDown, !event.modifierFlags.isDisjoint(with: [.command, .control])
+    else { return super.performKeyEquivalent(with: event) }
+    onKey?(event)
+    return true
+  }
+}
+
+/// The window's content view, under the photos and the palette. A click that no view above
+/// takes lands here.
+private final class BackdropView: NSView {
+  var onClick: (() -> Void)?
+
+  override func mouseDown(with event: NSEvent) {
+    onClick?()
   }
 }
