@@ -218,6 +218,10 @@ public final class PhotoLibrary {
   private func select<T>(
     _ columns: String, matching filter: CaptureFilter?, row: (SQLiteRow) throws -> T
   ) throws -> [T] {
+    // Only `nil` needs `read_state <> 2`: a file with no image never has a capture date, so a
+    // date filter leaves it out already. Checking it there too would read every row's table
+    // page, not only the covering `photos_taken_at` index: on 150,000 rows, a year's count went
+    // from 0.1 ms to 4 ms.
     let sql = "SELECT \(columns) FROM photos WHERE "
     switch filter {
     case nil:

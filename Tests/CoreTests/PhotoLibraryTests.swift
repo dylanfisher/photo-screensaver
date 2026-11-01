@@ -100,6 +100,20 @@ final class PhotoLibraryTests: XCTestCase {
     XCTAssertEqual(try database.count(matching: .daysOfYear(first: "12-27", last: "01-02")), 2)
   }
 
+  func testDateFiltersLeaveOutFilesWithNoImage() throws {
+    try library.jpeg("dated.jpg", properties: LibraryFixture.taken("2020:06:15 12:00:00"))
+    try library.text("broken.jpg")
+    try library.scan()
+    let database = try PhotoLibrary(at: library.database)
+    XCTAssertEqual(try database.count(matching: nil), 1)
+    for filter in [
+      CaptureFilter.between(lower: "0000", upper: "9999"),
+      .daysOfYear(first: "01-01", last: "12-31"), .daysOfYear(first: "12-31", last: "12-30"),
+    ] {
+      XCTAssertEqual(try database.count(matching: filter), 1, "\(filter)")
+    }
+  }
+
   func testCountsPhotosPerYear() throws {
     try library.jpeg("a.jpg", properties: LibraryFixture.taken("2019:05:01 10:00:00"))
     try library.jpeg("b.jpg", properties: LibraryFixture.taken("2020:05:01 10:00:00"))
