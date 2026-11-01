@@ -108,6 +108,7 @@ final class AppController: NSObject, NSApplicationDelegate {
       scan?.cancel()
       // Its photo IDs belong to the old library.
       history = SlideHistory()
+      shownID = nil
       openLibrary(for: loaded)
     } else if loaded.scaling != old?.scaling || loaded.orientation != old?.orientation
       || loaded.preloadCount != old?.preloadCount || loaded.kenBurns != old?.kenBurns
