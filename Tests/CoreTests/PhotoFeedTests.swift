@@ -211,6 +211,15 @@ final class PhotoFeedTests: XCTestCase {
     XCTAssertFalse(loading)
   }
 
+  func testAPhotoPutBackIsHandedOutNext() async throws {
+    for name in ["a", "b", "c"] { try library.jpeg("\(name).jpg") }
+    let feed = try makeFeed()
+    let unseen = try await feed.next()
+    await feed.putBack(unseen)
+    let next = try await feed.next()
+    XCTAssertEqual(next.id, unseen.id)
+  }
+
   private func makeFeed(
     _ settings: Settings = .starter, screen: CGSize = CGSize(width: 2560, height: 1600)
   ) throws -> PhotoFeed {

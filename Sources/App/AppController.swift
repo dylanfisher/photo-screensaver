@@ -380,12 +380,21 @@ final class AppController: NSObject, NSApplicationDelegate {
         if let feed {
           do {
             let photo: Photo?
+            var isNew = false
             switch history.target {
             case .photo(let id) where id == shownID: photo = nil
             case .photo(let id): photo = try await feed.photo(id)
-            case .new: photo = try await feed.next()
+            case .new:
+              photo = try await feed.next()
+              isNew = true
             }
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+              // A step restarted the loop as a new photo arrived: hand it back for the new loop
+              // rather than skip it. Not once the slideshow has stopped, which drops the feed's
+              // photos to free their memory.
+              if isNew, let photo, slideTask != nil { await feed.putBack(photo) }
+              return
+            }
             if let photo {
               if history.target == .new { history.add(photo.id) }
               window.show(photo, settings: settings)

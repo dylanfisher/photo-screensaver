@@ -74,6 +74,14 @@ public actor PhotoFeed {
     return photo
   }
 
+  /// Takes back a photo from `next()` that was never shown, so the next call hands it out
+  /// instead of it being skipped this pass. Callers don't hand one back after `drop()`, which
+  /// is meant to free decoded photos.
+  public func putBack(_ photo: Photo) {
+    ready.insert(photo, at: 0)
+    wake(throwing: nil)
+  }
+
   /// Decodes a photo shown before, for going back to it, without keeping it in the feed. Waits
   /// for a preload under way instead of decoding alongside it, and preloads wait for it.
   /// Doesn't check orientation, since the photo was shown once already. Preloading resumes
