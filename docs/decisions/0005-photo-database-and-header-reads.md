@@ -55,10 +55,12 @@ changed files before moving on; a changed file is replaced by a new, unread row.
 unread rows from the database in ID order, which is walk order, so a folder's files are read
 together and photos found a minute ago are read while the walk goes on. Taking them from the
 database rather than a queue keeps memory flat at 100k files and means an interrupted pass
-resumes where it stopped. Results are stored 200 to a transaction. On a network volume
-`ReadConcurrency`, the same controller as music-player's, sets the reader count from measured
-throughput: it starts at 16 and stays within 2…32, half music-player's top, since the slideshow
-reads full photos from the same share. Local volumes use one reader per core.
+resumes where it stopped. Results are stored 200 to a transaction, or once the oldest has waited
+3 seconds: at NAS speed 200 take most of a minute, which quitting would lose and the progress in
+the menu would lag by. On a network volume `ReadConcurrency`, the same controller as
+music-player's, sets the reader count from measured throughput: it starts at 16 and stays within
+2…32, half music-player's top, since the slideshow reads full photos from the same share. Local
+volumes use one reader per core.
 
 The safety rules carry over: rows are removed only after a walk that finished, with the folder
 still on the same device and listing something, and never under a folder that couldn't be

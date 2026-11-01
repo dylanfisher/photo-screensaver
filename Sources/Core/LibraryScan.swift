@@ -87,6 +87,10 @@ public final class LibraryScan: @unchecked Sendable {
   private let threads = DispatchGroup()
   private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "scan")
 
+  /// Results are also stored once the oldest waiting one is this old, so at NAS speed, where 200
+  /// results take most of a minute, quitting loses little and progress keeps up. A variable so
+  /// tests can store every result at once.
+  var batchSeconds = 3.0
   /// Called by a lister after it records each folder, with the folder's path. For tests.
   var didList: ((String) -> Void)?
   /// For tests, which can't move a folder to another volume.
@@ -124,6 +128,8 @@ public final class LibraryScan: @unchecked Sendable {
   private var controller: ReadConcurrency?
   private var window = Window(start: 0)
   private var batch: [(id: Int64, metadata: PhotoMetadata?)] = []
+  /// Uptime when the oldest result in `batch` was added.
+  private var batchStarted: UInt64 = 0
   private var storeError: Error?
   private var rootLost = false
   private var lastPublished: UInt64 = 0
@@ -409,10 +415,14 @@ public final class LibraryScan: @unchecked Sendable {
           log.error("can't read \(photo.path, privacy: .public): \(failure.description)")
         } else {
           summary.read += 1
+          if batch.isEmpty { batchStarted = DispatchTime.now().uptimeNanoseconds }
           batch.append((photo.id, metadata))
         }
         measure(seconds)
-        guard batch.count >= Self.batchSize else { return nil }
+        let age = Double(DispatchTime.now().uptimeNanoseconds - batchStarted) / 1e9
+        guard batch.count >= Self.batchSize || (!batch.isEmpty && age >= batchSeconds) else {
+          return nil
+        }
         defer { batch = [] }
         return batch
       }

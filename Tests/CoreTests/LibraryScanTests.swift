@@ -176,6 +176,28 @@ final class LibraryScanTests: XCTestCase {
     XCTAssertEqual(try library.paths(), ["Album/c.jpg", "a.jpg", "b.jpg"])
   }
 
+  func testStoresResultsWhileTheWalkIsStillGoing() throws {
+    let photo = try library.jpeg("a.jpg")
+    try library.jpeg("Later/b.jpg")
+    _ = try library.open()
+    let scan = LibraryScan(databaseURL: library.database, root: library.root)
+    scan.batchSeconds = 0
+    let database = try PhotoLibrary(at: library.database)
+    var readDuringWalk = false
+    scan.didList = { directory in
+      guard directory == "Later" else { return }
+      let deadline = Date().addingTimeInterval(10)
+      while !readDuringWalk && Date() < deadline {
+        readDuringWalk =
+          (try? database.photoIDs().compactMap { try database.photo($0) })?
+          .contains { $0.path == photo.lastPathComponent && $0.metadata != nil } == true
+        usleep(10_000)
+      }
+    }
+    _ = try scan.run()
+    XCTAssertTrue(readDuringWalk)
+  }
+
   func testAFileWithNoImageIsReadOnceAndNotShown() throws {
     try library.jpeg("good.jpg")
     try library.text("broken.jpg")
