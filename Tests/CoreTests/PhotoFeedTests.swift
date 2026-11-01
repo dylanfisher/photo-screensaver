@@ -108,6 +108,23 @@ final class PhotoFeedTests: XCTestCase {
     }
   }
 
+  func testALoadReadsTheIDsOnceHoweverManyPassesItTakes() async throws {
+    // Neither is landscape, so the load goes through both hundreds of times before giving up.
+    try library.jpeg("a.jpg", width: 20, height: 30)
+    try library.jpeg("b.jpg", width: 20, height: 30)
+    var settings = Settings.starter
+    settings.orientation = .landscape
+    let feed = try makeFeed(settings)
+    do {
+      _ = try await feed.next()
+      XCTFail("expected an error")
+    } catch let error as FeedError {
+      XCTAssertTrue(error.description.contains("no landscape photos"), error.description)
+    }
+    let reads = await feed.idReads
+    XCTAssertEqual(reads, 1)
+  }
+
   func testDropWakesAWaitingCallerWithCancellation() async throws {
     try library.jpeg("a.jpg", width: 3000, height: 2000)
     let feed = try makeFeed()

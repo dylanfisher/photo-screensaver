@@ -34,6 +34,10 @@ public actor PhotoFeed {
   /// This pass's photo IDs not shown yet, in shuffled order, next one last. Every photo is shown
   /// once before any repeats.
   private var pending: [Int64] = []
+  /// The IDs the last pass read, shuffled again for a pass that a load starts after its first.
+  private var passIDs: [Int64] = []
+  /// Times the IDs were read from the database. Readable by tests.
+  private(set) var idReads = 0
   private let settings: Settings
   private let screenPixels: CGSize
   private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "feed")
@@ -179,11 +183,16 @@ public actor PhotoFeed {
   /// Nonisolated so decoding runs off the actor and never blocks `next()`.
   private nonisolated func load() async throws -> Photo {
     var failures = 0
+    // Once per load: a few photos, none of them in the orientation setting, would otherwise
+    // read every ID again for each pass through them.
+    var mayReadIDs = true
     for _ in 0..<Self.maxOrientationChecks {
       // After `drop()`, stop instead of reading more files from the NAS.
       try Task.checkCancellation()
+      let (next, readIDs) = try await nextPhoto(mayReadIDs: mayReadIDs)
+      if readIDs { mayReadIDs = false }
       // Nil for a photo a scan removed since the IDs were read.
-      guard let (id, url) = try await nextPhoto() else { continue }
+      guard let (id, url) = next else { continue }
       do {
         if let photo = try Self.decode(
           id, url, settings: settings, screenPixels: screenPixels, anyOrientation: false)
@@ -204,20 +213,30 @@ public actor PhotoFeed {
         "no \(settings.orientation.rawValue) photos in \(Self.maxOrientationChecks) checked")
   }
 
-  private func nextPhoto() throws -> (Int64, URL)? {
+  /// The next photo of this pass, starting a new pass when it's over, and whether that read
+  /// the IDs from the database. A new pass reads them unless `mayReadIDs` is false, when it
+  /// shuffles the last pass's again.
+  private func nextPhoto(mayReadIDs: Bool) throws -> (photo: (Int64, URL)?, readIDs: Bool) {
+    var readIDs = false
     if pending.isEmpty {
-      // Worked out for each pass, so "on this day" moves on with the calendar.
-      let filter = CaptureFilter(settings.timeframe, today: Date(), calendar: .current)
-      pending = try library.photoIDs(matching: filter).shuffled()
-      guard !pending.isEmpty else {
-        let timeframe = filter == nil ? "" : " taken in \"\(settings.timeframe.title)\""
-        throw FeedError(description: "no photos\(timeframe) in \(root.path)")
+      if mayReadIDs || passIDs.isEmpty {
+        // Worked out for each pass, so "on this day" moves on with the calendar, and a feed
+        // started during the first scan takes in what it has added.
+        let filter = CaptureFilter(settings.timeframe, today: Date(), calendar: .current)
+        passIDs = try library.photoIDs(matching: filter)
+        idReads += 1
+        readIDs = true
+        guard !passIDs.isEmpty else {
+          let timeframe = filter == nil ? "" : " taken in \"\(settings.timeframe.title)\""
+          throw FeedError(description: "no photos\(timeframe) in \(root.path)")
+        }
       }
+      pending = passIDs.shuffled()
     }
     guard let id = pending.popLast() else {
       preconditionFailure("a pass with no photos throws above")
     }
-    return try library.photo(id).map { (id, root.appendingPathComponent($0.path)) }
+    return (try library.photo(id).map { (id, root.appendingPathComponent($0.path)) }, readIDs)
   }
 
   /// Nil when the photo doesn't match the orientation setting.
