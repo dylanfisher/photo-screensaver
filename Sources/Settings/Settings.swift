@@ -61,6 +61,42 @@ public struct Settings: Codable, Equatable {
     }
   }
 
+  /// The key for each command while the slideshow shows. Every command needs one, and no two
+  /// can share a key.
+  public struct Keys: Codable, Equatable {
+    private var specs: [Command: KeySpec]
+
+    public init(_ spec: (Command) -> KeySpec) {
+      specs = Dictionary(uniqueKeysWithValues: Command.allCases.map { ($0, spec($0)) })
+    }
+
+    public subscript(command: Command) -> KeySpec {
+      guard let spec = specs[command] else {
+        preconditionFailure("every command has a key, from init or decoding")
+      }
+      return spec
+    }
+
+    /// The command bound to `spec`, or nil if none is.
+    public func command(for spec: KeySpec) -> Command? {
+      Command.allCases.first { self[$0] == spec }
+    }
+
+    public init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: Command.self)
+      var specs: [Command: KeySpec] = [:]
+      for command in Command.allCases {
+        specs[command] = try container.decode(KeySpec.self, forKey: command)
+      }
+      self.specs = specs
+    }
+
+    public func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: Command.self)
+      for command in Command.allCases { try container.encode(self[command], forKey: command) }
+    }
+  }
+
   /// Folder the photos are read from, searched recursively. Never written to.
   public var libraryPath: String
   /// Minutes without keyboard or mouse input before the slideshow starts.
@@ -74,6 +110,9 @@ public struct Settings: Codable, Equatable {
   public var preloadCount: Int
   public var motion: Motion
   public var offHours: OffHours
+  /// Which photos show, by when they were taken.
+  public var timeframe: Timeframe
+  public var keys: Keys
 
   public var libraryURL: URL {
     URL(fileURLWithPath: (libraryPath as NSString).expandingTildeInPath, isDirectory: true)
@@ -105,7 +144,9 @@ extension Settings {
       enabled: false, stayOnMinutes: 30, checkEveryMinutes: 5, quickCheckEverySeconds: 15,
       sampleSeconds: 4,
       useLightSensor: true, threshold: 0.2),
-    offHours: OffHours(enabled: false, start: "00:00", end: "09:00")
+    offHours: OffHours(enabled: false, start: "00:00", end: "09:00"),
+    timeframe: .all,
+    keys: Keys(\.defaultKey)
   )
 
   public static func decode(_ data: Data) throws -> Settings {
@@ -115,8 +156,32 @@ extension Settings {
     } catch let error as DecodingError {
       throw SettingsError(description: describe(error))
     }
+    // Decoding ignores keys it doesn't read, and a write from the settings would drop them.
+    let unknown = keys(
+      in: try JSONSerialization.jsonObject(with: data),
+      notIn: try JSONSerialization.jsonObject(with: settings.encoded()))
+    if !unknown.isEmpty {
+      let names = unknown.map { "\"\($0.path.joined(separator: "."))\"" }
+      throw SettingsError(
+        description: "unknown key\(names.count == 1 ? "" : "s") \(names.joined(separator: ", "))")
+    }
     try settings.validate()
     return settings
+  }
+
+  /// The keys of JSON object `object` that `other` hasn't, with their values, and inside the
+  /// objects both have, theirs: the outermost key only, so an object `other` lacks is one key.
+  static func keys(in object: Any, notIn other: Any, path: [String] = [])
+    -> [(path: [String], value: Any)]
+  {
+    guard let object = object as? [String: Any], let other = other as? [String: Any] else {
+      return []
+    }
+    return object.keys.sorted().flatMap { key -> [(path: [String], value: Any)] in
+      guard let value = object[key] else { return [] }
+      guard let otherValue = other[key] else { return [(path + [key], value)] }
+      return keys(in: value, notIn: otherValue, path: path + [key])
+    }
   }
 
   public func encoded() throws -> Data {
@@ -136,6 +201,58 @@ extension Settings {
 
   public static func load(at url: URL = fileURL) throws -> Settings {
     try decode(Data(contentsOf: url))
+  }
+
+  /// What a config file holds, as the settings window shows it.
+  public enum Read: Equatable {
+    case settings(Settings)
+    /// The file can't be used: why, and the keys it leaves out, if it's a JSON object.
+    case broken(error: String, missing: [MissingKey])
+  }
+
+  /// A key a config file leaves out, with the value it has in `starter`, as JSON.
+  public struct MissingKey: Equatable {
+    /// Like `"keys.pause"`. An object the file leaves out is one key.
+    public let path: String
+    /// Like `"space"`, with the quotes, or `{"kind":"all"}`.
+    public let value: String
+
+    public init(path: String, value: String) {
+      self.path = path
+      self.value = value
+    }
+  }
+
+  public static func read(at url: URL = fileURL) -> Read {
+    let data: Data
+    do {
+      data = try Data(contentsOf: url)
+    } catch {
+      return .broken(error: error.localizedDescription, missing: [])
+    }
+    do {
+      return .settings(try decode(data))
+    } catch {
+      return .broken(error: "\(error)", missing: missingKeys(in: data))
+    }
+  }
+
+  /// The keys of `starter` that `data` leaves out; none if it isn't a JSON object.
+  static func missingKeys(in data: Data) -> [MissingKey] {
+    // Text that isn't JSON has no keys to name, and the decoding error says what's wrong.
+    guard let file = try? JSONSerialization.jsonObject(with: data) else { return [] }
+    do {
+      let defaults = try JSONSerialization.jsonObject(with: starter.encoded())
+      return try keys(in: defaults, notIn: file).map { key in
+        let value = try JSONSerialization.data(
+          withJSONObject: key.value,
+          options: [.sortedKeys, .fragmentsAllowed, .withoutEscapingSlashes])
+        return MissingKey(
+          path: key.path.joined(separator: "."), value: String(decoding: value, as: UTF8.self))
+      }
+    } catch {
+      preconditionFailure("starter's JSON writes back as JSON: \(error)")
+    }
   }
 
   func validate() throws {
@@ -176,8 +293,16 @@ extension Settings {
     if offHours.start == offHours.end {
       throw SettingsError(description: "offHours.start and offHours.end must differ")
     }
+    try timeframe.validate()
     if libraryPath.isEmpty {
       throw SettingsError(description: "libraryPath is empty")
+    }
+    for (index, command) in Command.allCases.enumerated() {
+      for other in Command.allCases[(index + 1)...] where keys[other] == keys[command] {
+        throw SettingsError(
+          description:
+            "keys.\(command.rawValue) and keys.\(other.rawValue) are both \"\(keys[command])\"")
+      }
     }
   }
 

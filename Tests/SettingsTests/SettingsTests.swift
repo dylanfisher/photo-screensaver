@@ -20,6 +20,39 @@ final class SettingsTests: XCTestCase {
     assertFails(json, containing: "kenBurns")
   }
 
+  func testUnknownKeysFailWithTheirNames() throws {
+    var json = try starterJSON()
+    json["shuffle"] = true
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["zoom"] = "z"
+    json["keys"] = keys
+    assertFails(json, containing: "unknown keys \"keys.zoom\", \"shuffle\"")
+  }
+
+  func testReadListsMissingKeysWithTheirDefaults() throws {
+    var json = try starterJSON()
+    json["timeframe"] = nil
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["pause"] = nil
+    json["keys"] = keys
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("config.json")
+    try JSONSerialization.data(withJSONObject: json).write(to: url)
+
+    guard case .broken(let error, let missing) = Settings.read(at: url) else {
+      return XCTFail("a file with missing keys reads as broken")
+    }
+    XCTAssertTrue(error.contains("missing key"), error)
+    XCTAssertEqual(
+      missing,
+      [
+        Settings.MissingKey(path: "keys.pause", value: "\"space\""),
+        Settings.MissingKey(path: "timeframe", value: "{\"kind\":\"all\"}"),
+      ])
+  }
+
   func testUnknownScalingFails() throws {
     var json = try starterJSON()
     json["scaling"] = "stretch"
@@ -110,6 +143,49 @@ final class SettingsTests: XCTestCase {
     var json = try starterJSON()
     json["slideSeconds"] = 1e11
     assertFails(json, containing: "slideSeconds")
+  }
+
+  func testStarterBindsEveryCommandToItsDefaultKey() {
+    for command in Command.allCases {
+      XCTAssertEqual(Settings.starter.keys[command], command.defaultKey)
+      XCTAssertEqual(Settings.starter.keys.command(for: command.defaultKey), command)
+    }
+    XCTAssertNil(Settings.starter.keys.command(for: KeySpec(.character("q"))))
+  }
+
+  func testKeysDecodeFromSpecs() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    XCTAssertEqual(keys["next"] as? String, "right")
+    keys["next"] = "cmd+n"
+    json["keys"] = keys
+    let settings = try Settings.decode(JSONSerialization.data(withJSONObject: json))
+    XCTAssertEqual(settings.keys[.next], KeySpec(.character("n"), modifiers: .cmd))
+  }
+
+  func testMissingCommandKeyFails() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["speed3"] = nil
+    json["keys"] = keys
+    assertFails(json, containing: "missing key \"keys.speed3\"")
+  }
+
+  func testBadKeySpecNamesTheCommand() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["previous"] = "lft"
+    json["keys"] = keys
+    assertFails(json, containing: "keys.previous")
+  }
+
+  func testTwoCommandsOnOneKeyFail() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["next"] = "cmd+shift+k"
+    keys["speed5"] = "shift+cmd+k"
+    json["keys"] = keys
+    assertFails(json, containing: "keys.next and keys.speed5 are both \"shift+cmd+k\"")
   }
 
   func testLibraryPathExpandsTilde() {
