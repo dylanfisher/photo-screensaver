@@ -23,11 +23,18 @@ public struct ImageFile {
 
   /// Pixel size as displayed, with EXIF rotation applied (a rotated portrait reports as portrait).
   public func displaySize() throws -> CGSize {
-    let props = try properties()
+    guard let size = Self.displaySize(properties: try properties()) else {
+      throw ImageFileError(description: "no pixel size in \(url.path)")
+    }
+    return size
+  }
+
+  /// `displaySize()` from properties ImageIO already read, or nil when they have no pixel size.
+  public static func displaySize(properties props: [CFString: Any]) -> CGSize? {
     guard
       let width = props[kCGImagePropertyPixelWidth] as? Int,
       let height = props[kCGImagePropertyPixelHeight] as? Int
-    else { throw ImageFileError(description: "no pixel size in \(url.path)") }
+    else { return nil }
     return Orientation(exif: props).swapsAxes
       ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
   }
