@@ -51,11 +51,19 @@ extension PhotoMetadata {
   public static let prefixBytes = 128 * 1024
   /// Read size past the prefix, for the files that need the rest.
   static let chunkBytes = 1024 * 1024
+  /// Most bytes read from one file. Up to 32 readers run at once, so reading a large PNG, HEIC
+  /// or TIFF without EXIF whole could hold gigabytes; past this, what was read is all there is.
+  public static let maxBytes = 8 * 1024 * 1024
 
-  /// Reads the first `prefixBytes` of the file, and the rest only when that isn't enough
-  /// (ADR 0005). ImageIO reads a whole file through a data provider, and how much it reads
-  /// through a URL is up to the volume, so the file is read here and handed over as data.
-  public static func read(at url: URL, prefixBytes: Int = prefixBytes) throws -> PhotoMetadata {
+  /// Reads the first `prefixBytes` of the file, and more, up to `maxBytes` in all, only when
+  /// that isn't enough (ADR 0005). ImageIO reads a whole file through a data provider, and how
+  /// much it reads through a URL is up to the volume, so the file is read here and handed over
+  /// as data. A file whose first `maxBytes` hold its size but not its EXIF gets only its size;
+  /// one whose first `maxBytes` don't hold its size is unreadable, so it stays in the slideshow
+  /// and the next scan tries it again.
+  public static func read(
+    at url: URL, prefixBytes: Int = prefixBytes, maxBytes: Int = maxBytes
+  ) throws -> PhotoMetadata {
     let file = open(url.path, O_RDONLY)
     guard file >= 0 else { throw unreadable(url, "can't open") }
     defer { close(file) }
@@ -64,16 +72,21 @@ extension PhotoMetadata {
     _ = fcntl(file, F_NOCACHE, 1)
     _ = fcntl(file, F_RDAHEAD, 0)
 
-    var data = try readBytes(file, upTo: prefixBytes, url)
-    let wholeFile = data.count < prefixBytes
+    var data = try readBytes(file, upTo: min(prefixBytes, maxBytes), url)
+    var wholeFile = data.count < min(prefixBytes, maxBytes)
     if let metadata = parse(data, wholeFile: wholeFile) { return metadata }
-    if !wholeFile {
-      while true {
-        let chunk = try readBytes(file, upTo: chunkBytes, url)
-        data.append(chunk)
-        if chunk.count < chunkBytes { break }
-      }
-      if let metadata = parse(data, wholeFile: true) { return metadata }
+    while !wholeFile && data.count < maxBytes {
+      let count = min(chunkBytes, maxBytes - data.count)
+      let chunk = try readBytes(file, upTo: count, url)
+      data.append(chunk)
+      wholeFile = chunk.count < count
+    }
+    // Past `maxBytes`, parsed as if it were the whole file, so it gives what it holds.
+    if let metadata = parse(data, wholeFile: true) { return metadata }
+    guard wholeFile else {
+      throw PhotoMetadataError(
+        kind: .unreadable,
+        description: "no image size in the first \(maxBytes) bytes of \(url.path)")
     }
     throw PhotoMetadataError(kind: .notAnImage, description: "no image in \(url.path)")
   }

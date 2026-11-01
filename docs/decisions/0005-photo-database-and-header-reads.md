@@ -31,8 +31,8 @@ prefix is the sortable year and month: a timeframe is `taken_at >= '2020-01' AND
 '2021-01'` on an index, and a year count groups on the first four characters. A separate year
 or month column would be a second copy of the same fact.
 
-**Read a 128 KiB prefix, and the rest only when it isn't enough.** Measured on this Mac with a
-6000×4000 JPEG (23 MB) and HEIC (12 MB):
+**Read a 128 KiB prefix, and up to 8 MiB only when it isn't enough.** Measured on this Mac with
+a 6000×4000 JPEG (23 MB) and HEIC (12 MB):
 
 - Through a `CGDataProvider`, ImageIO asked for the whole file in one call before returning
   properties, for both formats.
@@ -45,9 +45,13 @@ or month column would be a second copy of the same fact.
 
 So `PhotoMetadata.read` opens the file with `F_NOCACHE` and `F_RDAHEAD` off, reads the first
 128 KiB, and gives that to `CGImageSourceCreateWithData` as if it were the whole file. It reads
-the rest only when the prefix has no image size, or has no EXIF and the file isn't a JPEG: a
-JPEG's EXIF comes before its size, but HEIF, PNG and TIFF can keep it anywhere. 128 KiB holds a
-JPEG's EXIF segment (64 KB at most) and the ICC and XMP segments that come before its size.
+on only when the prefix has no image size, or has no EXIF and the file isn't a JPEG: a JPEG's
+EXIF comes before its size, but HEIF, PNG and TIFF can keep it anywhere. 128 KiB holds a JPEG's
+EXIF segment (64 KB at most) and the ICC and XMP segments that come before its size. It reads
+8 MiB of a file at most, since 32 readers each holding a whole 50 MB TIFF would take well over a
+gigabyte; what those 8 MiB hold is parsed as the whole file, so a large PNG, HEIC or TIFF whose
+EXIF lies further on gets its size only. One whose size isn't in its first 8 MiB counts as
+unreadable: it stays in the slideshow, unread, and the next scan tries it again.
 
 **Read while walking, tuned on the NAS.** `LibraryScan` ports music-player's pipeline (its ADRs
 0009 and 0010), scaled down. Four listers walk depth-first and commit each folder's new and
@@ -90,8 +94,8 @@ up each path as it loads, so 100k photos cost under a megabyte there.
 ## Consequences
 
 - Changing any schema SQL costs one full rescan, details included.
-- A JPEG whose header runs past 128 KiB, and a HEIC, PNG or TIFF without EXIF, is read whole,
-  once. If the NAS shows many of those, a larger prefix or a second, larger read is the fix.
+- A JPEG whose header runs past 128 KiB, and a HEIC, PNG or TIFF without EXIF, is read up to
+  8 MiB, once. If the NAS shows many of those, a larger prefix is the fix.
 - A folder emptied but left in place keeps its photos' rows until it's deleted or gets a file
   again. The feed skips the missing files.
 - The controller's numbers come from music-player's NAS, whose files are read for 16 KiB

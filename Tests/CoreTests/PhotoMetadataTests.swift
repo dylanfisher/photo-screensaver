@@ -63,6 +63,22 @@ final class PhotoMetadataTests: XCTestCase {
     XCTAssertEqual([metadata.width, metadata.height], [300, 200])
   }
 
+  func testPastTheCapKeepsWhatWasRead() throws {
+    // Its size is in the first 200 bytes, which ImageIO needs to reach the pixels to give.
+    let url = try library.image("a.png", type: .png, width: 300, height: 200)
+    XCTAssertGreaterThan(
+      try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int ?? 0, 200)
+    let metadata = try PhotoMetadata.read(at: url, prefixBytes: 16, maxBytes: 200)
+    XCTAssertEqual([metadata.width, metadata.height], [300, 200])
+  }
+
+  func testNoSizeWithinTheCapIsUnreadable() throws {
+    let url = try library.image("a.png", type: .png, width: 300, height: 200)
+    XCTAssertThrowsError(try PhotoMetadata.read(at: url, prefixBytes: 16, maxBytes: 64)) {
+      XCTAssertEqual(($0 as? PhotoMetadataError)?.kind, .unreadable)
+    }
+  }
+
   func testAFileWithNoImageIsNotAnImage() throws {
     try library.text("a.jpg")
     XCTAssertThrowsError(try PhotoMetadata.read(at: library.root.appendingPathComponent("a.jpg"))) {
