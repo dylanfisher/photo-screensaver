@@ -51,8 +51,10 @@ and reloads it on save. Every key is required.
 | `offHours.enabled` | Turn the slideshow off for part of each day. |
 | `offHours.start`, `offHours.end` | 24-hour local times like `"00:00"` and `"09:00"`. A start later than the end spans midnight. In between, the slideshow doesn't start and the camera stays off. A slideshow that's showing when they begin stops, and the display sleeps. Choosing **Show Slideshow** still works. |
 
-The library index is cached in `~/Library/Caches/photo-screensaver/` and rescanned at launch,
-daily, and from **Rescan Library**.
+The library database, `~/Library/Caches/photo-screensaver/library.sqlite`, is rescanned at
+launch, daily, and from **Rescan Library**. The first scan also reads each photo's date, camera
+and location, which can take tens of minutes for a large library on a NAS; photos show while it
+runs, and the menu shows how far it has got. Later scans read only new and changed files.
 
 ## macOS setup
 

@@ -21,9 +21,13 @@ final class AppController: NSObject, NSApplicationDelegate {
   private var settings: Settings?
   /// Modification date of the settings file when last read; polled to pick up edits.
   private var settingsModified: Date?
-  private var index: PhotoIndex?
+  /// The app's own connection to the library database, for choosing the library folder and
+  /// counting its photos. The scan and the feed open their own.
+  private var library: PhotoLibrary?
+  private var photoCount = 0
   private var feed: PhotoFeed?
-  private var scanning = false
+  private var scan: LibraryScan?
+  private var scanProgress: LibraryScan.Progress?
   private var presence = Presence.desktop
   /// Uptime when `presence` last changed. Uptime, like the input idle time it's compared with,
   /// stops while the Mac sleeps; wall-clock time doesn't.
@@ -93,7 +97,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     settings = loaded
 
     if loaded.libraryURL != old?.libraryURL {
-      loadCachedIndex(for: loaded)
+      // Its next write would fail anyway, once the database is in use for the new folder.
+      scan?.cancel()
+      openLibrary(for: loaded)
       rescan()
     } else if loaded.scaling != old?.scaling || loaded.orientation != old?.orientation
       || loaded.preloadCount != old?.preloadCount || loaded.kenBurns != old?.kenBurns
@@ -115,62 +121,105 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
   }
 
-  private func loadCachedIndex(for settings: Settings) {
-    do {
-      index = try PhotoIndex.cached(for: settings.libraryURL)
-    } catch {
-      // Stored data has one shape; anything else is discarded and the rescan replaces it.
-      index = nil
-      errors["cache"] = "Discarded unreadable library cache: \(error)"
+  /// Starts from what the database already has, so the slideshow can run while the rescan
+  /// that follows walks the library.
+  private func openLibrary(for settings: Settings) {
+    library = nil
+    photoCount = 0
+    record("database") {
+      let library = try openDatabase()
+      try library.use(root: settings.libraryURL)
+      photoCount = try library.count()
+      self.library = library
     }
     rebuildFeed()
   }
 
+  /// A file SQLite can't read is deleted and started anew: everything in it comes from the
+  /// library folder, and the rescan puts it back.
+  private func openDatabase() throws -> PhotoLibrary {
+    do {
+      return try PhotoLibrary(at: PhotoLibrary.defaultURL)
+    } catch let error as SQLiteError where error.isUnreadableFile {
+      try PhotoLibrary.discard(at: PhotoLibrary.defaultURL)
+      log.error("discarded unreadable library database: \(error, privacy: .public)")
+      return try PhotoLibrary(at: PhotoLibrary.defaultURL)
+    }
+  }
+
   @objc private func rescan() {
-    guard let root = settings?.libraryURL, !scanning else { return }
-    scanning = true
+    guard let root = settings?.libraryURL, library != nil, scan == nil else { return }
+    var continuation: AsyncStream<LibraryScan.Progress>.Continuation?
+    let stream = AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation = $0 }
+    let scan = LibraryScan(databaseURL: PhotoLibrary.defaultURL, root: root, progress: continuation)
+    self.scan = scan
+    scanProgress = nil
     updateMenu()
+    Task {
+      for await progress in stream { show(progress, of: scan) }
+    }
     // A dispatch queue rather than a Task: the scan blocks on network reads for a while, and
     // the cooperative thread pool is only a few threads wide on this Mac.
     DispatchQueue.global(qos: .utility).async {
-      let result = Result { try PhotoIndex.scan(root) }
+      let result = Result { try scan.run() }
       Task { @MainActor in self.finishScan(result, root: root) }
     }
   }
 
-  private func finishScan(_ result: Result<PhotoIndex, Error>, root: URL) {
-    scanning = false
+  private func show(_ progress: LibraryScan.Progress, of scan: LibraryScan) {
+    guard scan === self.scan else { return }
+    let walkJustFinished = progress.walkFinished && scanProgress?.walkFinished != true
+    scanProgress = progress
+    // New photos can be shown from here on, while their details are still being read.
+    if walkJustFinished { refreshPhotos() }
     updateMenu()
+  }
+
+  private func finishScan(_ result: Result<LibraryScan.Summary, Error>, root: URL) {
+    scan = nil
+    scanProgress = nil
     // Settings may have moved to another library while this scan ran.
     guard root == settings?.libraryURL else { return rescan() }
-    let scanned: PhotoIndex
     switch result {
-    case .success(let value):
-      scanned = value
+    case .success(let summary):
+      log.notice(
+        "scan: \(summary.found, privacy: .public) found, \(summary.read, privacy: .public) read, \(summary.failed, privacy: .public) failed, \(summary.removed, privacy: .public) removed, readers \(summary.readerTrace, privacy: .public)"
+      )
+      var problems: [String] = []
+      if summary.listedNothing {
+        // More likely a share hiccup than a library that emptied out.
+        problems.append("Scan found no photos in \(root.path); keeping the previous ones")
+      }
+      if summary.unreadable > 0 {
+        problems.append("\(summary.unreadable) library files or folders couldn't be read")
+      }
+      if summary.failed > 0 {
+        problems.append("\(summary.failed) photos couldn't be read; the next scan tries again")
+      }
+      errors["library"] = problems.isEmpty ? nil : problems.joined(separator: "; ")
     case .failure(let error):
       errors["library"] = "Library: \(error)"
-      return
     }
-    if scanned.paths.isEmpty, let index, !index.paths.isEmpty {
-      // More likely a share hiccup than a library that emptied out.
-      errors["library"] = "Scan found no photos in \(root.path); keeping the previous index"
-      return
-    }
-    errors["library"] =
-      scanned.unreadableCount > 0
-      ? "\(scanned.unreadableCount) library files or folders couldn't be read" : nil
-    index = scanned
-    record("cache") { try scanned.save() }
-    if let feed { Task { await feed.replace(scanned) } } else { rebuildFeed() }
+    // A failed scan keeps what it stored, so this picks that up too.
+    refreshPhotos()
+  }
+
+  private func refreshPhotos() {
+    guard let library else { return }
+    record("database") { photoCount = try library.count() }
+    if let feed { Task { await feed.reload() } } else { rebuildFeed() }
     updateMenu()
   }
 
   private func rebuildFeed() {
     feed?.dropAsync()
     feed = nil
-    if let settings, let index, let screen = NSScreen.main {
-      feed = PhotoFeed(
-        index: index, settings: settings, screenPixels: SlideshowWindow.pixelSize(of: screen))
+    if let settings, library != nil, photoCount > 0, let screen = NSScreen.main {
+      record("feed") {
+        feed = try PhotoFeed(
+          databaseURL: PhotoLibrary.defaultURL, root: settings.libraryURL, settings: settings,
+          screenPixels: SlideshowWindow.pixelSize(of: screen))
+      }
     }
     updateMenu()
   }
@@ -374,6 +423,12 @@ final class AppController: NSObject, NSApplicationDelegate {
     let menu = NSMenu()
     menu.autoenablesItems = false
     menu.addItem(disabled: statusLine())
+    if let progress = scanProgress, progress.unread > 0 {
+      let read = progress.photos - progress.unread
+      menu.addItem(
+        disabled:
+          "Reading photo details: \(read.formatted()) of \(progress.photos.formatted())")
+    }
     for error in errors.values.sorted() { menu.addItem(disabled: "⚠︎ \(error)") }
     menu.addItem(.separator())
     let show = menu.addItem(
@@ -382,7 +437,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     menu.addItem(withTitle: "Edit Settings…", action: #selector(editSettings), keyEquivalent: "")
     let rescanItem = menu.addItem(
       withTitle: "Rescan Library", action: #selector(rescan), keyEquivalent: "")
-    rescanItem.isEnabled = !scanning && settings != nil
+    rescanItem.isEnabled = scan == nil && library != nil
     menu.addItem(.separator())
     menu.addItem(
       withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -393,8 +448,10 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   private func statusLine() -> String {
-    let count = index.map { "\($0.paths.count.formatted()) photos" } ?? "No library index yet"
-    return scanning ? "\(count) · scanning…" : count
+    guard library != nil else { return "No library database" }
+    let count = "\(photoCount.formatted()) photos"
+    guard scan != nil, scanProgress?.walkFinished != true else { return count }
+    return "\(count) · scanning… \((scanProgress?.found ?? 0).formatted()) found"
   }
 
   @objc private func editSettings() {

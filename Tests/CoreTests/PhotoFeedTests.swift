@@ -59,8 +59,10 @@ final class PhotoFeedTests: XCTestCase {
   }
 
   func testAllFilesUnreadableThrows() async throws {
-    for i in 0..<3 { try library.text("broken\(i).jpg") }
+    for i in 0..<3 { try library.jpeg("broken\(i).jpg") }
     let feed = try makeFeed()
+    // Broken after the scan, as when the share stops serving them.
+    for i in 0..<3 { try library.text("broken\(i).jpg") }
     do {
       _ = try await feed.next()
       XCTFail("expected an error")
@@ -114,6 +116,19 @@ final class PhotoFeedTests: XCTestCase {
     XCTAssertEqual(photo.url.lastPathComponent, "a.jpg")
   }
 
+  func testReloadPicksUpWhatAScanAdded() async throws {
+    try library.jpeg("a.jpg")
+    let feed = try makeFeed()
+    _ = try await feed.next()
+    try library.jpeg("b.jpg")
+    try library.scan()
+    await feed.drop()
+    await feed.reload()
+    var seen: Set<String> = []
+    for _ in 0..<2 { seen.insert(try await feed.next().url.lastPathComponent) }
+    XCTAssertEqual(seen, ["a.jpg", "b.jpg"])
+  }
+
   func testRetriesAfterAFailure() async throws {
     let feed = try makeFeed()
     for _ in 0..<2 {
@@ -129,6 +144,8 @@ final class PhotoFeedTests: XCTestCase {
   private func makeFeed(
     _ settings: Settings = .starter, screen: CGSize = CGSize(width: 2560, height: 1600)
   ) throws -> PhotoFeed {
-    PhotoFeed(index: try PhotoIndex.scan(library.root), settings: settings, screenPixels: screen)
+    try library.scan()
+    return try PhotoFeed(
+      databaseURL: library.database, root: library.root, settings: settings, screenPixels: screen)
   }
 }

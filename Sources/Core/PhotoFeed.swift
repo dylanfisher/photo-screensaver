@@ -17,14 +17,19 @@ public struct FeedError: Error, CustomStringConvertible {
 
 /// Hands out decoded photos in shuffled order, keeping up to `preloadCount` decoded ahead. One
 /// loader decodes at a time, so a slow NAS read never has several full-size images in flight.
+///
+/// Shuffles the library's photo IDs rather than its rows, so a library of 100k photos costs
+/// under a megabyte here, and looks up each photo's path as it's loaded.
 public actor PhotoFeed {
   /// Unreadable files in a row before giving up, e.g. because the share was unmounted.
   static let maxConsecutiveFailures = 20
   /// Files checked for orientation before deciding none match.
   static let maxOrientationChecks = 500
 
-  private var index: PhotoIndex
-  private var queue: ShuffleQueue<String>
+  private let library: PhotoLibrary
+  private let root: URL
+  /// Nil until the IDs are first needed, and again after `reload()`.
+  private var queue: ShuffleQueue<Int64>?
   private let settings: Settings
   private let screenPixels: CGSize
   private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "feed")
@@ -37,9 +42,10 @@ public actor PhotoFeed {
   /// Bumped by `drop()`, so a load that finishes afterwards is discarded instead of buffered.
   private var generation = 0
 
-  public init(index: PhotoIndex, settings: Settings, screenPixels: CGSize) {
-    self.index = index
-    self.queue = ShuffleQueue(index.paths)
+  /// Opens its own connection to the database at `databaseURL`, whose photos are in `root`.
+  public init(databaseURL: URL, root: URL, settings: Settings, screenPixels: CGSize) throws {
+    library = try PhotoLibrary(at: databaseURL)
+    self.root = root
     self.settings = settings
     self.screenPixels = screenPixels
   }
@@ -61,10 +67,10 @@ public actor PhotoFeed {
     return photo
   }
 
-  /// Swaps in a fresh scan. Photos already decoded are still shown.
-  public func replace(_ index: PhotoIndex) {
-    self.index = index
-    queue = ShuffleQueue(index.paths)
+  /// Picks up what a scan changed, starting a new shuffle. Photos already decoded are still
+  /// shown.
+  public func reload() {
+    queue = nil
   }
 
   /// Frees decoded photos, which can be hundreds of MB, e.g. while the display is off.
@@ -121,7 +127,8 @@ public actor PhotoFeed {
     for _ in 0..<Self.maxOrientationChecks {
       // After `drop()`, stop instead of reading more files from the NAS.
       try Task.checkCancellation()
-      let url = try await nextURL()
+      // Nil for a photo a scan removed since the IDs were read.
+      guard let url = try await nextURL() else { continue }
       do {
         if let photo = try Self.decode(url, settings: settings, screenPixels: screenPixels) {
           return photo
@@ -140,11 +147,13 @@ public actor PhotoFeed {
         "no \(settings.orientation.rawValue) photos in \(Self.maxOrientationChecks) checked")
   }
 
-  private func nextURL() throws -> URL {
-    guard let path = queue.next() else {
-      throw FeedError(description: "no photos in \(index.root)")
+  private func nextURL() throws -> URL? {
+    var queue = try self.queue ?? ShuffleQueue(library.photoIDs())
+    defer { self.queue = queue }
+    guard let id = queue.next() else {
+      throw FeedError(description: "no photos in \(root.path)")
     }
-    return index.url(for: path)
+    return try library.photo(id).map { root.appendingPathComponent($0.path) }
   }
 
   /// Nil when the photo doesn't match the orientation setting.
