@@ -62,8 +62,10 @@ reads full photos from the same share. Local volumes use one reader per core.
 
 The safety rules carry over: rows are removed only after a walk that finished, with the folder
 still on the same device and listing something, and never under a folder that couldn't be
-listed. A read that fails leaves the row unread for the next scan; a file with no image in it is
-marked and not shown.
+listed, or that listed nothing while rows are known under it, which an SMB hiccup can cause. The
+device check is a `stat` on the folder, made without holding the scan's lock, since on a hung
+mount it blocks. A read that fails leaves the row unread for the next scan; a file with no image
+in it is marked and not shown.
 
 The app opens the database at launch and shows what it has, then rescans. New photos join the
 feed when the walk finishes, before their details are read. The feed shuffles row IDs and looks
@@ -88,6 +90,8 @@ up each path as it loads, so 100k photos cost under a megabyte there.
 - Changing any schema SQL costs one full rescan, details included.
 - A JPEG whose header runs past 128 KiB, and a HEIC, PNG or TIFF without EXIF, is read whole,
   once. If the NAS shows many of those, a larger prefix or a second, larger read is the fix.
+- A folder emptied but left in place keeps its photos' rows until it's deleted or gets a file
+  again. The feed skips the missing files.
 - The controller's numbers come from music-player's NAS, whose files are read for 16 KiB
   each. The scan's log line records the reader trace, to check them against this library.
 - Photos whose details can't be read stay in the slideshow, unread, and like every photo

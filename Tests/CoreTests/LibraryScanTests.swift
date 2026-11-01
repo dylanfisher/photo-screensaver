@@ -1,5 +1,7 @@
-import Core
+import Darwin
 import XCTest
+
+@testable import Core
 
 final class LibraryScanTests: XCTestCase {
   private var library: LibraryFixture!
@@ -59,13 +61,17 @@ final class LibraryScanTests: XCTestCase {
   func testRemovesFilesThatAreGoneAfterACompleteWalk() throws {
     try library.jpeg("a.jpg")
     let gone = try library.jpeg("Album/b.jpg")
+    try library.jpeg("Album/c.jpg")
+    let goneFolder = try library.jpeg("Old/d.jpg").deletingLastPathComponent()
     try library.scan()
     try FileManager.default.removeItem(at: gone)
-    XCTAssertEqual(try library.scan().removed, 1)
-    XCTAssertEqual(try library.paths(), ["a.jpg"])
+    try FileManager.default.removeItem(at: goneFolder)
+    XCTAssertEqual(try library.scan().removed, 2)
+    XCTAssertEqual(try library.paths(), ["Album/c.jpg", "a.jpg"])
   }
 
   func testKeepsPhotosUnderAFolderThatCanNotBeListed() throws {
+    try XCTSkipIf(geteuid() == 0, "root lists a folder without permissions")
     try library.jpeg("a.jpg")
     try library.jpeg("Locked/b.jpg")
     try library.jpeg("Locked/Inner/c.jpg")
@@ -91,17 +97,83 @@ final class LibraryScanTests: XCTestCase {
     XCTAssertEqual(try library.paths(), ["a.jpg"])
   }
 
-  func testACancelledScanRemovesNothing() throws {
+  func testKeepsPhotosUnderAFolderThatListsNothing() throws {
+    try library.jpeg("a.jpg")
+    let album = try library.jpeg("Album/b.jpg").deletingLastPathComponent()
+    try library.jpeg("Album/Inner/c.jpg")
+    try library.scan()
+    // As when an SMB glitch lists the folder as empty.
+    try FileManager.default.removeItem(at: album)
+    try FileManager.default.createDirectory(at: album, withIntermediateDirectories: false)
+    let summary = try library.scan()
+    XCTAssertEqual(summary.unreadable, 1)
+    XCTAssertEqual(summary.removed, 0)
+    XCTAssertEqual(try library.paths(), ["Album/Inner/c.jpg", "Album/b.jpg", "a.jpg"])
+  }
+
+  func testAnEmptyFolderWithNoPhotosIsNotAProblem() throws {
+    try library.jpeg("a.jpg")
+    try FileManager.default.createDirectory(
+      at: library.root.appendingPathComponent("Empty"), withIntermediateDirectories: false)
+    XCTAssertEqual(try library.scan().unreadable, 0)
+  }
+
+  func testFindsTheFolderAboveAPath() {
+    let folders: Set<String> = ["A", "B/C"]
+    XCTAssertEqual(LibraryScan.folder(containing: "A", in: folders), "A")
+    XCTAssertEqual(LibraryScan.folder(containing: "A/x.jpg", in: folders), "A")
+    XCTAssertEqual(LibraryScan.folder(containing: "B/C/D/x.jpg", in: folders), "B/C")
+    XCTAssertNil(LibraryScan.folder(containing: "AB/x.jpg", in: folders))
+    XCTAssertNil(LibraryScan.folder(containing: "B/x.jpg", in: folders))
+  }
+
+  func testKeepsEveryPhotoWhenTheFolderMovesToAnotherDevice() throws {
     try library.jpeg("a.jpg")
     let gone = try library.jpeg("b.jpg")
     try library.scan()
     try FileManager.default.removeItem(at: gone)
     let scan = LibraryScan(databaseURL: library.database, root: library.root)
-    scan.cancel()
+    // The first stat is at the start of the scan, the next when the walk finishes.
+    var stats: dev_t = 0
+    scan.deviceOf = { _ in
+      stats += 1
+      return stats
+    }
+    XCTAssertThrowsError(try scan.run()) { error in
+      XCTAssertTrue("\(error)".contains("went away"), "\(error)")
+    }
+    XCTAssertEqual(try library.paths(), ["a.jpg", "b.jpg"])
+  }
+
+  func testAFileThatCanNotBeReadStaysUnreadAndShown() throws {
+    try XCTSkipIf(geteuid() == 0, "root reads a file without permissions")
+    try library.jpeg("a.jpg")
+    let locked = try library.jpeg("b.jpg")
+    try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
+    let first = try library.scan()
+    XCTAssertEqual([first.read, first.failed], [1, 1])
+    XCTAssertNil(try records()["b.jpg"]?.metadata)
+    XCTAssertEqual(try library.paths(), ["a.jpg", "b.jpg"])
+    // The next scan tries it again.
+    XCTAssertEqual(try library.scan().failed, 1)
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: locked.path)
+    XCTAssertEqual(try library.scan().read, 1)
+    XCTAssertNotNil(try records()["b.jpg"]?.metadata)
+  }
+
+  func testACancelledScanRemovesNothing() throws {
+    try library.jpeg("a.jpg")
+    let gone = try library.jpeg("b.jpg")
+    try library.jpeg("Album/c.jpg")
+    try library.scan()
+    try FileManager.default.removeItem(at: gone)
+    let scan = LibraryScan(databaseURL: library.database, root: library.root)
+    // Cancelled after the walk has listed the library folder but before it can finish.
+    scan.didList = { [weak scan] _ in scan?.cancel() }
     let summary = try scan.run()
     XCTAssertTrue(summary.cancelled)
     XCTAssertEqual(summary.removed, 0)
-    XCTAssertEqual(try library.paths(), ["a.jpg", "b.jpg"])
+    XCTAssertEqual(try library.paths(), ["Album/c.jpg", "a.jpg", "b.jpg"])
   }
 
   func testAFileWithNoImageIsReadOnceAndNotShown() throws {

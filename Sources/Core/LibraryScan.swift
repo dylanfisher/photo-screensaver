@@ -20,8 +20,10 @@ struct WalkedFile: Equatable {
 /// order they were added, while the walk runs (ADR 0005). On a network volume `ReadConcurrency`
 /// sets how many read at once.
 ///
-/// A missing or vanished folder, one that lists nothing while the database has photos from it,
-/// and any folder that can't be listed, removes nothing under it.
+/// A missing or vanished library folder removes nothing, and neither does a library folder that
+/// lists nothing while the database has photos from it. Nothing is removed under a folder that
+/// can't be listed, or one that lists nothing while the database has photos under it, since an
+/// SMB hiccup can make a folder look empty.
 ///
 /// `@unchecked Sendable` because its threads share the state below through two locks, which
 /// Swift 5.7 has no checked type for: `condition` guards every `var`, and `storeLock` guards
@@ -69,7 +71,8 @@ public final class LibraryScan: @unchecked Sendable {
     /// Files that couldn't be read. They stay unread, so the next scan tries them again.
     public var failed = 0
     public var removed = 0
-    /// Folders and entries the walk couldn't read. Nothing under them was removed.
+    /// Folders and entries the walk couldn't read, and folders that listed nothing while the
+    /// database had photos under them. Nothing under them was removed.
     public var unreadable = 0
     /// The folder listed nothing while the database had photos from it, so none were removed.
     public var listedNothing = false
@@ -84,6 +87,11 @@ public final class LibraryScan: @unchecked Sendable {
   private let threads = DispatchGroup()
   private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "scan")
 
+  /// Called by a lister after it records each folder, with the folder's path. For tests.
+  var didList: ((String) -> Void)?
+  /// For tests, which can't move a folder to another volume.
+  var deviceOf: (String) -> dev_t? = directoryDevice
+
   private let storeLock = NSLock()
   private var library: PhotoLibrary?
 
@@ -96,7 +104,9 @@ public final class LibraryScan: @unchecked Sendable {
   /// Folders still to list, relative to `root` ("" is `root`), popped from the end.
   private var directories = [""]
   private var listing = 0
-  private var unreadablePaths: [String] = []
+  private var unreadablePaths: Set<String> = []
+  /// Folders other than `root` that listed no entries.
+  private var emptyFolders: Set<String> = []
   private var rootEntries: Int?
   private var rootError: String?
   private var walkFinished = false
@@ -143,7 +153,7 @@ public final class LibraryScan: @unchecked Sendable {
   /// when the folder is missing, unreadable or goes away, or the database fails. Call it once.
   public func run() throws -> Summary {
     defer { progress?.finish() }
-    guard let device = directoryDevice(root) else {
+    guard let device = deviceOf(root) else {
       throw LibraryError(description: "library folder not found: \(root)")
     }
     let library = try PhotoLibrary(at: databaseURL)
@@ -211,6 +221,7 @@ public final class LibraryScan: @unchecked Sendable {
       let listed = autoreleasepool { list(directory) }
       let changed = condition.locking { add(listed, of: directory) }
       if !changed.isEmpty { store { try $0.insert(changed, root: root) } }
+      didList?(directory)
       let last = condition.locking { () -> Bool in
         listing -= 1
         if !changed.isEmpty { walkCommits += 1 }
@@ -237,7 +248,10 @@ public final class LibraryScan: @unchecked Sendable {
       rootEntries = listed.entries
       rootError = listed.error
     }
-    unreadablePaths += listed.unreadable
+    unreadablePaths.formUnion(listed.unreadable)
+    if !directory.isEmpty, listed.error == nil, listed.entries == 0 {
+      emptyFolders.insert(directory)
+    }
     summary.unreadable += listed.unreadable.count
     directories += listed.directories.reversed()
     summary.found += listed.files.count
@@ -247,8 +261,11 @@ public final class LibraryScan: @unchecked Sendable {
   /// Run by the lister that lists the last folder: removes the rows of files that are gone, if
   /// it's safe to.
   private func finishWalk() {
+    // Outside `condition`: on a hung SMB mount the stat blocks, and readers and `cancel()` need
+    // the lock meanwhile. `device` is only written before the threads start.
+    let sameDevice = deviceOf(root) == device
     let gone = condition.locking { () -> [String] in
-      if directoryDevice(root) != device {
+      if !sameDevice {
         rootLost = true
         condition.broadcast()
         return []
@@ -257,9 +274,17 @@ public final class LibraryScan: @unchecked Sendable {
         summary.listedNothing = true
         return []
       }
-      return known.keys.filter { path in
-        !unreadablePaths.contains { path == $0 || path.hasPrefix($0 + "/") }
+      var gone: [String] = []
+      var keptEmpty: Set<String> = []
+      for path in known.keys where Self.folder(containing: path, in: unreadablePaths) == nil {
+        if let empty = Self.folder(containing: path, in: emptyFolders) {
+          keptEmpty.insert(empty)
+        } else {
+          gone.append(path)
+        }
       }
+      summary.unreadable += keptEmpty.count
+      return gone
     }
     if !gone.isEmpty { store { try $0.remove(gone, root: root) } }
     condition.locking {
@@ -269,6 +294,19 @@ public final class LibraryScan: @unchecked Sendable {
       condition.broadcast()
     }
     publish(force: true)
+  }
+
+  /// `path` itself or the folder above it that's in `folders`, if any. Looks up each ancestor
+  /// rather than comparing prefixes, so a walk that removes many files with many unreadable
+  /// folders doesn't hold `condition` for long.
+  static func folder(containing path: String, in folders: Set<String>) -> String? {
+    guard !folders.isEmpty else { return nil }
+    var candidate = Substring(path)
+    while true {
+      if folders.contains(String(candidate)) { return String(candidate) }
+      guard let slash = candidate.lastIndex(of: "/") else { return nil }
+      candidate = candidate[..<slash]
+    }
   }
 
   private struct Listing {
@@ -356,7 +394,7 @@ public final class LibraryScan: @unchecked Sendable {
           failure = PhotoMetadataError(kind: .unreadable, description: "\(error)")
         }
       }
-      if let failure, failure.kind == .unreadable, directoryDevice(root) != device {
+      if let failure, failure.kind == .unreadable, deviceOf(root) != device {
         condition.locking {
           readerThreads -= 1
           rootLost = true
