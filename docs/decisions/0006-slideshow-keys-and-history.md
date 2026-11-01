@@ -25,9 +25,13 @@ each of its switches, which the compiler asks for.
 **Keys are text, parsed and checked with the rest of the file.** `KeySpec` reads `"right"`,
 `"1"` or `"shift+cmd+k"`, in any modifier order and case, and writes back one form. Every
 command needs a key, so a misspelled name fails as missing, and two commands on one key fail
-with both names. Turning a key press into a `KeySpec` is AppKit work, so it lives in App: named
-keys by key code, so arrows work on any layout, and other keys by the character they type with
-no modifiers held, so `shift+1` is the 1 key, not `!`.
+with both names. **A key is matched by its position, not what it types.** Each key code maps to
+the key's name or the character it types on a US ANSI keyboard without Shift, and keypad digits
+to the same digits, so `"1"` is the key left of 2 on a French layout too, where it types `&`,
+and on a Cyrillic one, where letters type nothing the file could name otherwise. `shift+1` is
+the 1 key with Shift, not `!`, and a character no US key types unshifted, such as `!` or `é`,
+fails when the file is read. That table is pure data, so it lives in Settings with `KeySpec`,
+where it's tested; App only reads the key code and the modifiers from the `NSEvent`.
 
 **The window judges keys, the idle check judges the mouse.** While the photos show and the
 slideshow window is the key window of the active app, the idle check counts only mouse and
@@ -55,6 +59,10 @@ stretches the current pan, so the feed and its preloaded photos stay. A file wit
 alone and the error shows on screen.
 
 ## Alternatives considered
+
+- **Matching by the character the layout types** — rejected: on AZERTY the digit row types
+  `&é"'(` unshifted, so the speed keys never matched, and a non-Latin layout types no letter the
+  config could name.
 
 - **A local key monitor (`NSEvent.addLocalMonitorForEvents`)** — rejected: it needs the app
   active just like the window does, and adds a second path for the same events.

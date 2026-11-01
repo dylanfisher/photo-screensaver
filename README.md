@@ -62,7 +62,7 @@ and reloads it on save. Every key is required.
 | `motion.threshold` | Fraction (0–1) of any one cell of an 8×6 grid over the camera image that must change to count as motion. Lower catches smaller or more distant movement. |
 | `offHours.enabled` | Turn the slideshow off for part of each day. |
 | `offHours.start`, `offHours.end` | 24-hour local times like `"00:00"` and `"09:00"`. A start later than the end spans midnight. In between, the slideshow doesn't start and the camera stays off. A slideshow that's showing when they begin stops, and the display sleeps. Choosing **Show Slideshow** still works. |
-| `keys.<command>` | Key for each command in the table above, like `"right"`, `"1"` or `"cmd+k"`: modifiers (`ctrl`, `option`, `shift`, `cmd`) joined by `+`, then one character or `left`, `right`, `up`, `down`, `space`, `tab`, `return`, `escape` or `delete`. Every command needs a key, and no two can share one. |
+| `keys.<command>` | Key for each command in the table above, like `"right"`, `"1"` or `"cmd+k"`: modifiers (`ctrl`, `option`, `shift`, `cmd`) joined by `+`, then one character or `left`, `right`, `up`, `down`, `space`, `tab`, `return`, `escape` or `delete`. A character names the key that types it on a US keyboard without Shift, whatever layout the Mac uses: `"1"` is the key left of 2 even where it types `&`, and `!` is `"shift+1"`. Every command needs a key, and no two can share one. |
 
 The library database, `~/Library/Caches/photo-screensaver/library.sqlite`, is rescanned at
 launch, daily, and from **Rescan Library**. The first scan also reads each photo's date, camera

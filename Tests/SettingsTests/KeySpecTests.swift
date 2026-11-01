@@ -31,11 +31,45 @@ final class KeySpecTests: XCTestCase {
       ("rght", "unknown key \"rght\""),
       ("cmd+kk", "unknown key \"kk\""),
       (" ", "unknown key"),
+      ("!", "shift+1"),
+      ("é", "US keyboard"),
     ]
     for (text, reason) in cases {
       XCTAssertThrowsError(try KeySpec(parsing: text), text) { error in
         XCTAssertTrue("\(error)".contains(reason), "\"\(error)\" does not mention \(reason)")
       }
+    }
+  }
+
+  func testKeyCodesNameKeysByTheirPlaceOnAUSKeyboard() {
+    XCTAssertEqual(KeySpec.Key(keyCode: 18), .character("1"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 23), .character("5"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 12), .character("q"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 44), .character("/"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 42), .character("\\"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 124), .named(.right))
+    XCTAssertNil(KeySpec.Key(keyCode: 122), "F1 has no name")
+  }
+
+  func testKeypadDigitsAreTheDigitKeys() {
+    XCTAssertEqual(KeySpec.Key(keyCode: 83), .character("1"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 82), .character("0"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 92), .character("9"))
+    XCTAssertEqual(KeySpec.Key(keyCode: 76), .named(.return))
+  }
+
+  func testEveryCharacterKeyParsesBack() throws {
+    for code in UInt16(0)...127 {
+      guard let key = KeySpec.Key(keyCode: code) else { continue }
+      let spec = KeySpec(key)
+      XCTAssertEqual(try KeySpec(parsing: spec.description), spec, "key code \(code)")
+    }
+  }
+
+  func testEveryDefaultKeyHasAKeyCode() {
+    let reachable = Set((UInt16(0)...127).compactMap { KeySpec.Key(keyCode: $0) })
+    for command in Command.allCases {
+      XCTAssertTrue(reachable.contains(command.defaultKey.key), command.rawValue)
     }
   }
 }
