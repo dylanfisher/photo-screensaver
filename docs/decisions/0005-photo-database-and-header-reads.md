@@ -75,9 +75,11 @@ device check is a `stat` on the folder, made without holding the scan's lock, si
 mount it blocks. A read that fails leaves the row unread for the next scan; a file with no image
 in it is marked and not shown.
 
-The app opens the database at launch and shows what it has, then rescans. New photos join the
-feed when the walk finishes, before their details are read. The feed shuffles row IDs and looks
-up each path as it loads, so 100k photos cost under a megabyte there.
+The app opens the database at launch and shows what it has, then rescans. Its own connection
+runs on a serial queue, since opening can rebuild the tables, another folder deletes every row,
+and a count reads every row. New photos join the feed when the walk finishes, before their
+details are read. The feed shuffles row IDs and looks up each path as it loads, so 100k photos
+cost under a megabyte there.
 
 ## Alternatives considered
 

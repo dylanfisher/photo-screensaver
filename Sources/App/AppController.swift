@@ -23,7 +23,11 @@ final class AppController: NSObject, NSApplicationDelegate {
   private var settingsModified: Date?
   /// The app's own connection to the library database, for choosing the library folder and
   /// counting its photos. The scan and the feed open their own.
-  private var library: PhotoLibrary?
+  private let library = LibraryConnection()
+  /// Whether the last `openLibrary` succeeded, so `library` describes the settings' folder.
+  private var libraryOpen = false
+  /// Bumped by each `openLibrary`, so the results of an earlier one are ignored.
+  private var libraryGeneration = 0
   private var photoCount = 0
   private var feed: PhotoFeed?
   private var scan: LibraryScan?
@@ -105,7 +109,6 @@ final class AppController: NSObject, NSApplicationDelegate {
       // Its photo IDs belong to the old library.
       history = SlideHistory()
       openLibrary(for: loaded)
-      rescan()
     } else if loaded.scaling != old?.scaling || loaded.orientation != old?.orientation
       || loaded.preloadCount != old?.preloadCount || loaded.kenBurns != old?.kenBurns
     {
@@ -134,31 +137,24 @@ final class AppController: NSObject, NSApplicationDelegate {
   /// Starts from what the database already has, so the slideshow can run while the rescan
   /// that follows walks the library.
   private func openLibrary(for settings: Settings) {
-    library = nil
+    libraryOpen = false
+    libraryGeneration += 1
+    let generation = libraryGeneration
     photoCount = 0
-    record("database") {
-      let library = try openDatabase()
-      try library.use(root: settings.libraryURL)
-      photoCount = try library.count()
-      self.library = library
-    }
     rebuildFeed()
-  }
-
-  /// A file SQLite can't read is deleted and started anew: everything in it comes from the
-  /// library folder, and the rescan puts it back.
-  private func openDatabase() throws -> PhotoLibrary {
-    do {
-      return try PhotoLibrary(at: PhotoLibrary.defaultURL)
-    } catch let error as SQLiteError where error.isUnreadableFile {
-      try PhotoLibrary.discard(at: PhotoLibrary.defaultURL)
-      log.error("discarded unreadable library database: \(error, privacy: .public)")
-      return try PhotoLibrary(at: PhotoLibrary.defaultURL)
+    library.open(root: settings.libraryURL) { result in
+      guard generation == self.libraryGeneration else { return }
+      self.record("database") {
+        self.photoCount = try result.get()
+        self.libraryOpen = true
+      }
+      self.rebuildFeed()
+      self.rescan()
     }
   }
 
   @objc private func rescan() {
-    guard let root = settings?.libraryURL, library != nil, scan == nil else { return }
+    guard let root = settings?.libraryURL, libraryOpen, scan == nil else { return }
     var continuation: AsyncStream<LibraryScan.Progress>.Continuation?
     let stream = AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation = $0 }
     let scan = LibraryScan(databaseURL: PhotoLibrary.defaultURL, root: root, progress: continuation)
@@ -215,16 +211,20 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   private func refreshPhotos() {
-    guard let library else { return }
-    record("database") { photoCount = try library.count() }
-    if let feed { Task { await feed.reload() } } else { rebuildFeed() }
-    updateMenu()
+    guard libraryOpen else { return }
+    let generation = libraryGeneration
+    library.count { result in
+      guard generation == self.libraryGeneration else { return }
+      self.record("database") { self.photoCount = try result.get() }
+      if let feed = self.feed { Task { await feed.reload() } } else { self.rebuildFeed() }
+      self.updateMenu()
+    }
   }
 
   private func rebuildFeed() {
     feed?.dropAsync()
     feed = nil
-    if let settings, library != nil, photoCount > 0, let screen = NSScreen.main {
+    if let settings, libraryOpen, photoCount > 0, let screen = NSScreen.main {
       record("feed") {
         feed = try PhotoFeed(
           databaseURL: PhotoLibrary.defaultURL, root: settings.libraryURL, settings: settings,
@@ -516,7 +516,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     menu.addItem(withTitle: "Edit Settings…", action: #selector(editSettings), keyEquivalent: "")
     let rescanItem = menu.addItem(
       withTitle: "Rescan Library", action: #selector(rescan), keyEquivalent: "")
-    rescanItem.isEnabled = scan == nil && library != nil
+    rescanItem.isEnabled = scan == nil && libraryOpen
     menu.addItem(.separator())
     menu.addItem(
       withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -527,7 +527,7 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   private func statusLine() -> String {
-    guard library != nil else { return "No library database" }
+    guard libraryOpen else { return "No library database" }
     let count = "\(photoCount.formatted()) photos"
     guard scan != nil, scanProgress?.walkFinished != true else { return count }
     return "\(count) · scanning… \((scanProgress?.found ?? 0).formatted()) found"
@@ -539,6 +539,59 @@ final class AppController: NSObject, NSApplicationDelegate {
       [Settings.fileURL], withApplicationAt: textEdit, configuration: .init()
     ) { _, error in
       Task { @MainActor in self.errors["edit"] = error.map { "Can't open settings: \($0)" } }
+    }
+  }
+}
+
+/// Runs the app's database work on a serial queue that owns the connection, so the main thread
+/// never waits on it: opening can rebuild the tables, choosing another folder deletes every row,
+/// counting reads every row, and a write can wait up to 5 s behind the scan's.
+///
+/// `@unchecked Sendable` because `connection` is only touched on `queue`.
+private final class LibraryConnection: @unchecked Sendable {
+  private let queue = DispatchQueue(
+    label: "com.dylanfisher.photo-screensaver.library", qos: .userInitiated)
+  private var connection: PhotoLibrary?
+  private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "app")
+
+  /// Opens the database for `root`, discarding the photos of any other folder, and calls `done`
+  /// with how many photos it can show.
+  func open(root: URL, then done: @escaping @MainActor (Result<Int, Error>) -> Void) {
+    run(done) { [self] in
+      connection = nil
+      let library = try openDatabase()
+      try library.use(root: root)
+      connection = library
+      return try library.count()
+    }
+  }
+
+  /// Only after an `open` that succeeded.
+  func count(then done: @escaping @MainActor (Result<Int, Error>) -> Void) {
+    run(done) { [self] in
+      guard let connection else { preconditionFailure("counted photos before the database opened") }
+      return try connection.count()
+    }
+  }
+
+  private func run(
+    _ done: @escaping @MainActor (Result<Int, Error>) -> Void, _ body: @escaping () throws -> Int
+  ) {
+    queue.async {
+      let result = Result(catching: body)
+      Task { @MainActor in done(result) }
+    }
+  }
+
+  /// A file SQLite can't read is deleted and started anew: everything in it comes from the
+  /// library folder, and the rescan puts it back.
+  private func openDatabase() throws -> PhotoLibrary {
+    do {
+      return try PhotoLibrary(at: PhotoLibrary.defaultURL)
+    } catch let error as SQLiteError where error.isUnreadableFile {
+      try PhotoLibrary.discard(at: PhotoLibrary.defaultURL)
+      log.error("discarded unreadable library database: \(error, privacy: .public)")
+      return try PhotoLibrary(at: PhotoLibrary.defaultURL)
     }
   }
 }
