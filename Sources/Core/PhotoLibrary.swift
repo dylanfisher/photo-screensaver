@@ -40,6 +40,33 @@ public struct PhotoRecord: Equatable, Sendable {
   public let metadata: PhotoMetadata?
 }
 
+/// A place name looked up for a location.
+public enum CachedPlace: Equatable, Sendable {
+  case named(String)
+  /// The geocoder knows of nothing there, or nothing with a name worth showing.
+  case unnamed
+
+  public var name: String? {
+    guard case .named(let name) = self else { return nil }
+    return name
+  }
+}
+
+/// A cell of the place-name cache: coordinates rounded to 0.01°, about 1.1 km north to south
+/// and less east to west away from the equator. Photos taken within a cell share one lookup and
+/// one name, which at the city and landmark level a short name shows is rarely wrong.
+struct PlaceKey: Hashable {
+  static let cellsPerDegree = 100.0
+
+  let latitude: Int
+  let longitude: Int
+
+  init(latitude: Double, longitude: Double) {
+    self.latitude = Int((latitude * Self.cellsPerDegree).rounded())
+    self.longitude = Int((longitude * Self.cellsPerDegree).rounded())
+  }
+}
+
 /// The photo library database: one row per photo file, with its EXIF details once read, and a
 /// cache of place names. Everything in it can be rebuilt from the files, so it lives in Caches.
 ///
@@ -240,6 +267,25 @@ public final class PhotoLibrary {
       }
       return PhotoRecord(id: id, path: try row.text(0), metadata: metadata)
     }.first
+  }
+
+  // MARK: Places
+
+  /// Nil when no name has been looked up for `key`.
+  func place(at key: PlaceKey) throws -> CachedPlace? {
+    try database.prepare("SELECT name FROM places WHERE lat_key = ? AND lon_key = ?").map(
+      key.latitude, key.longitude
+    ) { row in
+      let name = try row.text(0)
+      // An empty name records that the geocoder had none, so it isn't asked again.
+      return name.isEmpty ? CachedPlace.unnamed : .named(name)
+    }.first
+  }
+
+  func store(_ place: CachedPlace, at key: PlaceKey) throws {
+    try database.prepare(
+      "INSERT OR REPLACE INTO places (lat_key, lon_key, name) VALUES (?, ?, ?)"
+    ).run(key.latitude, key.longitude, place.name ?? "")
   }
 
   // MARK: Scanning
