@@ -7,7 +7,8 @@ let package = Package(
   platforms: [.macOS(.v12)],
   products: [.executable(name: "PhotoScreensaver", targets: ["App"])],
   targets: [
-    .target(name: "Primitives"),
+    // The system's SQLite, through the SDK's SQLite3 module.
+    .target(name: "Primitives", linkerSettings: [.linkedLibrary("sqlite3")]),
     .target(name: "Settings"),
     .target(name: "Core", dependencies: ["Settings", "Primitives"]),
     .executableTarget(name: "App", dependencies: ["Core", "Settings", "Primitives"]),
