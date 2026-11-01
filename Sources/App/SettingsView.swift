@@ -250,7 +250,7 @@ struct SettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
-      Button("Restore Default Keys", action: model.restoreDefaultKeys)
+      Button("Restore Default Keys") { model.restoreDefaultKeys() }
     }
   }
 

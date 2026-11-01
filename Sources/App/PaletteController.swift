@@ -164,7 +164,7 @@ final class PaletteController {
     CommandPalette.filter(choices, by: query, title: Self.title)
   }
 
-  private static func title(of choice: TimeframePicker.Choice) -> String {
+  nonisolated private static func title(of choice: TimeframePicker.Choice) -> String {
     switch choice {
     case .timeframe(let timeframe): return timeframe.title
     case .customRange: return "Custom range…"
@@ -306,7 +306,7 @@ final class PaletteController {
   }
 
   /// Like "3,812 photos".
-  static func photos(_ count: Int) -> String {
+  nonisolated static func photos(_ count: Int) -> String {
     count == 1 ? "1 photo" : "\(count.formatted()) photos"
   }
 
