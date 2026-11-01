@@ -58,6 +58,42 @@ public struct Settings: Codable, Equatable {
     }
   }
 
+  /// The key for each command while the slideshow shows. Every command needs one, and no two
+  /// can share a key.
+  public struct Keys: Codable, Equatable {
+    private var specs: [Command: KeySpec]
+
+    public init(_ spec: (Command) -> KeySpec) {
+      specs = Dictionary(uniqueKeysWithValues: Command.allCases.map { ($0, spec($0)) })
+    }
+
+    public subscript(command: Command) -> KeySpec {
+      guard let spec = specs[command] else {
+        preconditionFailure("every command has a key, from init or decoding")
+      }
+      return spec
+    }
+
+    /// The command bound to `spec`, or nil if none is.
+    public func command(for spec: KeySpec) -> Command? {
+      Command.allCases.first { self[$0] == spec }
+    }
+
+    public init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: Command.self)
+      var specs: [Command: KeySpec] = [:]
+      for command in Command.allCases {
+        specs[command] = try container.decode(KeySpec.self, forKey: command)
+      }
+      self.specs = specs
+    }
+
+    public func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: Command.self)
+      for command in Command.allCases { try container.encode(self[command], forKey: command) }
+    }
+  }
+
   /// Folder the photos are read from, searched recursively. Never written to.
   public var libraryPath: String
   /// Minutes without keyboard or mouse input before the slideshow starts.
@@ -71,6 +107,7 @@ public struct Settings: Codable, Equatable {
   public var preloadCount: Int
   public var motion: Motion
   public var offHours: OffHours
+  public var keys: Keys
 
   public var libraryURL: URL {
     URL(fileURLWithPath: (libraryPath as NSString).expandingTildeInPath, isDirectory: true)
@@ -101,7 +138,8 @@ extension Settings {
     motion: Motion(
       enabled: false, checkEveryMinutes: 5, quickCheckEverySeconds: 15, sampleSeconds: 4,
       useLightSensor: true, threshold: 0.2),
-    offHours: OffHours(enabled: false, start: "00:00", end: "09:00")
+    offHours: OffHours(enabled: false, start: "00:00", end: "09:00"),
+    keys: Keys(\.defaultKey)
   )
 
   public static func decode(_ data: Data) throws -> Settings {
@@ -132,6 +170,12 @@ extension Settings {
 
   public static func load(at url: URL = fileURL) throws -> Settings {
     try decode(Data(contentsOf: url))
+  }
+
+  /// Replaces the config file with these settings, if they're valid.
+  public func save(at url: URL = fileURL) throws {
+    try validate()
+    try encoded().write(to: url, options: .atomic)
   }
 
   func validate() throws {
@@ -173,6 +217,13 @@ extension Settings {
     }
     if libraryPath.isEmpty {
       throw SettingsError(description: "libraryPath is empty")
+    }
+    for (index, command) in Command.allCases.enumerated() {
+      for other in Command.allCases[(index + 1)...] where keys[other] == keys[command] {
+        throw SettingsError(
+          description:
+            "keys.\(command.rawValue) and keys.\(other.rawValue) are both \"\(keys[command])\"")
+      }
     }
   }
 

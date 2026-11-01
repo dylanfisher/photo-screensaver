@@ -112,6 +112,65 @@ final class SettingsTests: XCTestCase {
     assertFails(json, containing: "slideSeconds")
   }
 
+  func testStarterBindsEveryCommandToItsDefaultKey() {
+    for command in Command.allCases {
+      XCTAssertEqual(Settings.starter.keys[command], command.defaultKey)
+      XCTAssertEqual(Settings.starter.keys.command(for: command.defaultKey), command)
+    }
+    XCTAssertNil(Settings.starter.keys.command(for: KeySpec(.character("q"))))
+  }
+
+  func testKeysDecodeFromSpecs() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    XCTAssertEqual(keys["next"] as? String, "right")
+    keys["next"] = "cmd+n"
+    json["keys"] = keys
+    let settings = try Settings.decode(JSONSerialization.data(withJSONObject: json))
+    XCTAssertEqual(settings.keys[.next], KeySpec(.character("n"), modifiers: .cmd))
+  }
+
+  func testMissingCommandKeyFails() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["speed3"] = nil
+    json["keys"] = keys
+    assertFails(json, containing: "missing key \"keys.speed3\"")
+  }
+
+  func testBadKeySpecNamesTheCommand() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["previous"] = "lft"
+    json["keys"] = keys
+    assertFails(json, containing: "keys.previous")
+  }
+
+  func testTwoCommandsOnOneKeyFail() throws {
+    var json = try starterJSON()
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["next"] = "cmd+shift+k"
+    keys["speed5"] = "shift+cmd+k"
+    json["keys"] = keys
+    assertFails(json, containing: "keys.next and keys.speed5 are both \"shift+cmd+k\"")
+  }
+
+  func testSaveWritesWhatLoadReads() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("config.json")
+
+    var settings = Settings.starter
+    settings.slideSeconds = 300
+    try settings.save(at: url)
+    XCTAssertEqual(try Settings.load(at: url), settings)
+
+    settings.transitionSeconds = 400
+    XCTAssertThrowsError(try settings.save(at: url))
+    XCTAssertEqual(try Settings.load(at: url).transitionSeconds, Settings.starter.transitionSeconds)
+  }
+
   func testLibraryPathExpandsTilde() {
     var settings = Settings.starter
     settings.libraryPath = "~/Pictures"
