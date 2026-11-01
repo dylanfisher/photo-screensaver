@@ -85,17 +85,20 @@ public final class SQLiteDatabase {
     try SQLiteStatement(self, sql)
   }
 
-  /// Runs `body` in a transaction: committed when it returns, rolled back when it throws.
-  /// `BEGIN IMMEDIATE` takes the write lock up front, so two writers wait on the busy timeout
-  /// instead of failing at their first write.
+  /// Runs `body` in a transaction: committed when it returns, rolled back when it or the commit
+  /// throws. `BEGIN IMMEDIATE` takes the write lock up front, so two writers wait on the busy
+  /// timeout instead of failing at their first write.
   public func transaction<T>(_ body: () throws -> T) throws -> T {
     try execute("BEGIN IMMEDIATE")
-    let result = Result(catching: body)
-    switch result {
-    case .success: try execute("COMMIT")
+    let result = Result(catching: body).flatMap { value in
+      Result { try execute("COMMIT") }.map { value }
+    }
     // SQLite rolls some failures back itself, such as SQLITE_FULL, and a second rollback would
-    // fail and hide the error that caused it.
-    case .failure: if isInTransaction { try execute("ROLLBACK") }
+    // fail. A failed COMMIT, such as SQLITE_BUSY or a deferred constraint, leaves the
+    // transaction open, and every later BEGIN would fail.
+    if case .failure = result, isInTransaction {
+      // The error to report is the one that caused the rollback.
+      try? execute("ROLLBACK")
     }
     return try result.get()
   }

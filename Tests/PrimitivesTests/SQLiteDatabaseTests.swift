@@ -45,6 +45,23 @@ final class SQLiteDatabaseTests: XCTestCase {
     XCTAssertEqual(try database.prepare("SELECT count(*) FROM t").map { try $0.int(0) }, [0])
   }
 
+  func testTransactionRollsBackWhenItsCommitFails() throws {
+    try database.execute(
+      """
+      CREATE TABLE parent (id INTEGER PRIMARY KEY);
+      CREATE TABLE child (parent INTEGER REFERENCES parent (id) DEFERRABLE INITIALLY DEFERRED)
+      """)
+    // A deferred foreign key is checked at COMMIT, which fails and leaves the transaction open.
+    XCTAssertThrowsError(
+      try database.transaction { try database.prepare("INSERT INTO child VALUES (1)").run() }
+    ) { error in
+      XCTAssertEqual((error as? SQLiteError)?.sql, "COMMIT")
+    }
+    XCTAssertFalse(database.isInTransaction)
+    try database.transaction { try database.prepare("INSERT INTO t (i) VALUES (1)").run() }
+    XCTAssertEqual(try database.prepare("SELECT count(*) FROM child").map { try $0.int(0) }, [0])
+  }
+
   func testTransactionCommitsWhenItsBodyReturns() throws {
     try database.transaction { try database.prepare("INSERT INTO t (i) VALUES (1)").run() }
     XCTAssertEqual(try database.prepare("SELECT count(*) FROM t").map { try $0.int(0) }, [1])
