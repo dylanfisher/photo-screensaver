@@ -590,15 +590,11 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   /// Saves the speed to the config file and applies it the way any edit to that file is
-  /// applied. Reads the file first rather than saving `settings`, so a hand edit not yet picked
-  /// up isn't overwritten, and a file with errors isn't replaced at all.
+  /// applied. Changes the file rather than saving `settings`, so a hand edit not yet picked up
+  /// isn't overwritten, and a file with errors isn't replaced at all.
   private func setSpeed(_ seconds: Double, title: String) {
     do {
-      var saved = try Settings.load()
-      if saved.slideSeconds != seconds {
-        saved.slideSeconds = seconds
-        try saved.save()
-      }
+      try Settings.update { $0.slideSeconds = seconds }
     } catch {
       window?.showMessage("Can't change speed: \(error)")
       return
@@ -608,15 +604,11 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   /// Saves the timeframe to the config file, applies it the way any edit to that file is
-  /// applied, which rebuilds the feed from it, and moves on to a photo from it. Reads the file
-  /// first, like `setSpeed`.
+  /// applied, which rebuilds the feed from it, and moves on to a photo from it. Changes the
+  /// file, like `setSpeed`.
   private func setTimeframe(_ timeframe: Timeframe, count: Int) {
     do {
-      var saved = try Settings.load()
-      if saved.timeframe != timeframe {
-        saved.timeframe = timeframe
-        try saved.save()
-      }
+      try Settings.update { $0.timeframe = timeframe }
     } catch {
       closePalette()
       window?.showMessage("Can't change timeframe: \(error)")

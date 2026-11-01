@@ -164,22 +164,6 @@ final class SettingsTests: XCTestCase {
     assertFails(json, containing: "keys.next and keys.speed5 are both \"shift+cmd+k\"")
   }
 
-  func testSaveWritesWhatLoadReads() throws {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-    let url = dir.appendingPathComponent("config.json")
-
-    var settings = Settings.starter
-    settings.slideSeconds = 300
-    try settings.save(at: url)
-    XCTAssertEqual(try Settings.load(at: url), settings)
-
-    settings.transitionSeconds = 400
-    XCTAssertThrowsError(try settings.save(at: url))
-    XCTAssertEqual(try Settings.load(at: url).transitionSeconds, Settings.starter.transitionSeconds)
-  }
-
   func testLibraryPathExpandsTilde() {
     var settings = Settings.starter
     settings.libraryPath = "~/Pictures"

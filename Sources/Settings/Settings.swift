@@ -199,12 +199,6 @@ extension Settings {
     try decode(Data(contentsOf: url))
   }
 
-  /// Replaces the config file with these settings, if they're valid.
-  public func save(at url: URL = fileURL) throws {
-    try validate()
-    try encoded().write(to: url, options: .atomic)
-  }
-
   func validate() throws {
     // Upper bounds keep durations sane, well inside what timers can represent.
     let ranges: [(String, Double, Double)] = [
