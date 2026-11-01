@@ -39,14 +39,15 @@ public actor PhotoFeed {
   private let log = Logger(subsystem: "com.dylanfisher.photo-screensaver", category: "feed")
 
   private var ready: [Photo] = []
-  private var loader: Task<Void, Never>?
+  /// Readable by tests, to tell whether a load is under way.
+  private(set) var loader: Task<Void, Never>?
   /// Set when a load fails; thrown by the next `next()`, which also allows a retry.
   private var failure: Error?
   private var waiters: [CheckedContinuation<Void, Error>] = []
   /// Bumped by `drop()`, so a load that finishes afterwards is discarded instead of buffered.
   private var generation = 0
   /// Calls to `photo(_:)` under way, which hold off new preloads.
-  private var revisits = 0
+  private(set) var revisits = 0
 
   /// Opens its own connection to the database at `databaseURL`, whose photos are in `root`.
   public init(databaseURL: URL, root: URL, settings: Settings, screenPixels: CGSize) throws {
@@ -75,8 +76,10 @@ public actor PhotoFeed {
 
   /// Decodes a photo shown before, for going back to it, without keeping it in the feed. Waits
   /// for a preload under way instead of decoding alongside it, and preloads wait for it.
-  /// Doesn't check orientation, since the photo was shown once already.
+  /// Doesn't check orientation, since the photo was shown once already. Preloading resumes
+  /// afterwards unless `drop()` was called meanwhile, since then nothing is showing.
   public func photo(_ id: Int64) async throws -> Photo {
+    let generation = generation
     revisits += 1
     let result: Result<Photo, Error>
     do {
@@ -85,7 +88,7 @@ public actor PhotoFeed {
       result = .failure(error)
     }
     revisits -= 1
-    fill()
+    if generation == self.generation { fill() }
     return try result.get()
   }
 

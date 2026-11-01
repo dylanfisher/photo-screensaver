@@ -1,6 +1,7 @@
-import Core
 import Settings
 import XCTest
+
+@testable import Core
 
 final class PhotoFeedTests: XCTestCase {
   private var library: LibraryFixture!
@@ -195,6 +196,19 @@ final class PhotoFeedTests: XCTestCase {
     _ = try await feed.photo(first.id)
     let second = try await feed.next()
     XCTAssertNotEqual(second.id, first.id)
+  }
+
+  func testARevisitInterruptedByADropDoesNotPreload() async throws {
+    for name in ["a", "b"] { try library.jpeg("\(name).jpg", width: 3000, height: 2000) }
+    let feed = try makeFeed()
+    let shown = try await feed.next()
+    // next() started a preload, which the revisit waits for.
+    let revisit = Task { try await feed.photo(shown.id) }
+    while await feed.revisits == 0 { await Task.yield() }
+    await feed.drop()
+    _ = try await revisit.value
+    let loading = await feed.loader != nil
+    XCTAssertFalse(loading)
   }
 
   private func makeFeed(
