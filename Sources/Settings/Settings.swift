@@ -107,6 +107,8 @@ public struct Settings: Codable, Equatable {
   public var preloadCount: Int
   public var motion: Motion
   public var offHours: OffHours
+  /// Which photos show, by when they were taken.
+  public var timeframe: Timeframe
   public var keys: Keys
 
   public var libraryURL: URL {
@@ -139,6 +141,7 @@ extension Settings {
       enabled: false, checkEveryMinutes: 5, quickCheckEverySeconds: 15, sampleSeconds: 4,
       useLightSensor: true, threshold: 0.2),
     offHours: OffHours(enabled: false, start: "00:00", end: "09:00"),
+    timeframe: .all,
     keys: Keys(\.defaultKey)
   )
 
@@ -215,6 +218,7 @@ extension Settings {
     if offHours.start == offHours.end {
       throw SettingsError(description: "offHours.start and offHours.end must differ")
     }
+    try timeframe.validate()
     if libraryPath.isEmpty {
       throw SettingsError(description: "libraryPath is empty")
     }

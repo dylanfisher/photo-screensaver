@@ -70,14 +70,34 @@ final class PhotoLibraryTests: XCTestCase {
 
     let all = try database.photoIDs()
     XCTAssertEqual(all.count, 6)
-    let in2020 = try database.photoIDs(
-      takenIn: CaptureMonth(year: 2020, month: 1)...CaptureMonth(year: 2020, month: 12))
+    let in2020 = try database.photoIDs(matching: .between(lower: "2020-01", upper: "2021-01"))
     XCTAssertEqual(
       try in2020.compactMap { try database.photo($0)?.path }.sorted(),
       ["2020-01.jpg", "2020-06.jpg", "2020-12.jpg"])
-    let june = try database.photoIDs(
-      takenIn: CaptureMonth(year: 2020, month: 6)...CaptureMonth(year: 2020, month: 6))
+    let june = try database.photoIDs(matching: .between(lower: "2020-06", upper: "2020-07"))
     XCTAssertEqual(try june.compactMap { try database.photo($0)?.path }, ["2020-06.jpg"])
+    XCTAssertEqual(try database.count(matching: .between(lower: "2020-01", upper: "2021-01")), 3)
+    XCTAssertEqual(try database.count(matching: nil), 6)
+  }
+
+  func testDaysOfYearMatchInAnyYearAndWrapAroundNewYear() throws {
+    let dates = [
+      "a.jpg": "2003:12:30 10:00:00", "b.jpg": "2019:01:02 23:59:59",
+      "c.jpg": "2020:01:03 00:00:00", "d.jpg": "2012:02:29 12:00:00",
+      "e.jpg": "2015:03:01 12:00:00", "f.jpg": "2015:06:01 12:00:00",
+    ]
+    for (name, date) in dates { try library.jpeg(name, properties: LibraryFixture.taken(date)) }
+    try library.jpeg("undated.jpg")
+    try library.scan()
+    let database = try PhotoLibrary(at: library.database)
+    func paths(_ filter: CaptureFilter) throws -> [String] {
+      try database.photoIDs(matching: filter).compactMap { try database.photo($0)?.path }.sorted()
+    }
+
+    XCTAssertEqual(
+      try paths(.daysOfYear(first: "12-27", last: "01-02")), ["a.jpg", "b.jpg"])
+    XCTAssertEqual(try paths(.daysOfYear(first: "02-25", last: "03-02")), ["d.jpg", "e.jpg"])
+    XCTAssertEqual(try database.count(matching: .daysOfYear(first: "12-27", last: "01-02")), 2)
   }
 
   func testCountsPhotosPerYear() throws {

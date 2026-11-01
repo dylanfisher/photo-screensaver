@@ -120,7 +120,9 @@ final class AppController: NSObject, NSApplicationDelegate {
       openLibrary(for: loaded)
     } else if loaded.scaling != old?.scaling || loaded.orientation != old?.orientation
       || loaded.preloadCount != old?.preloadCount || loaded.kenBurns != old?.kenBurns
+      || loaded.timeframe != old?.timeframe
     {
+      // Another timeframe chooses from the photos already in the database, without a rescan.
       rebuildFeed()
     }
     if loaded.slideSeconds != old?.slideSeconds, slideTask != nil {
@@ -620,7 +622,10 @@ final class AppController: NSObject, NSApplicationDelegate {
 
   private func statusLine() -> String {
     guard libraryOpen else { return "No library database" }
-    let count = "\(photoCount.formatted()) photos"
+    var count = "\(photoCount.formatted()) photos"
+    if let timeframe = settings?.timeframe, timeframe != .all {
+      count += " · showing \(timeframe.title)"
+    }
     guard scan != nil, scanProgress?.walkFinished != true else { return count }
     return "\(count) · scanning… \((scanProgress?.found ?? 0).formatted()) found"
   }

@@ -205,9 +205,17 @@ public actor PhotoFeed {
   }
 
   private func nextPhoto() throws -> (Int64, URL)? {
-    if pending.isEmpty { pending = try library.photoIDs().shuffled() }
+    if pending.isEmpty {
+      // Worked out for each pass, so "on this day" moves on with the calendar.
+      let filter = CaptureFilter(settings.timeframe, today: Date(), calendar: .current)
+      pending = try library.photoIDs(matching: filter).shuffled()
+      guard !pending.isEmpty else {
+        let timeframe = filter == nil ? "" : " taken in \"\(settings.timeframe.title)\""
+        throw FeedError(description: "no photos\(timeframe) in \(root.path)")
+      }
+    }
     guard let id = pending.popLast() else {
-      throw FeedError(description: "no photos in \(root.path)")
+      preconditionFailure("a pass with no photos throws above")
     }
     return try library.photo(id).map { (id, root.appendingPathComponent($0.path)) }
   }

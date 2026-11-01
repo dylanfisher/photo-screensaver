@@ -82,6 +82,32 @@ final class PhotoFeedTests: XCTestCase {
     }
   }
 
+  func testShowsOnlyPhotosInTheTimeframe() async throws {
+    try library.jpeg("2014.jpg", properties: LibraryFixture.taken("2014:05:01 10:00:00"))
+    try library.jpeg("2015.jpg", properties: LibraryFixture.taken("2015:05:01 10:00:00"))
+    try library.jpeg("undated.jpg")
+    var settings = Settings.starter
+    settings.timeframe = .year(2014)
+    let feed = try makeFeed(settings)
+    for _ in 0..<4 {
+      let photo = try await feed.next()
+      XCTAssertEqual(photo.url.lastPathComponent, "2014.jpg")
+    }
+  }
+
+  func testATimeframeWithNoPhotosSaysSo() async throws {
+    try library.jpeg("2014.jpg", properties: LibraryFixture.taken("2014:05:01 10:00:00"))
+    var settings = Settings.starter
+    settings.timeframe = .year(2020)
+    let feed = try makeFeed(settings)
+    do {
+      _ = try await feed.next()
+      XCTFail("expected an error")
+    } catch let error as FeedError {
+      XCTAssertTrue(error.description.contains("no photos taken in \"2020\""), error.description)
+    }
+  }
+
   func testDropWakesAWaitingCallerWithCancellation() async throws {
     try library.jpeg("a.jpg", width: 3000, height: 2000)
     let feed = try makeFeed()

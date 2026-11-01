@@ -197,17 +197,42 @@ public final class PhotoLibrary {
     try integer("SELECT count(*) FROM photos WHERE read_state <> 2")
   }
 
-  /// IDs of the photos that can be shown, all of them or those taken in `months`. Photos whose
+  /// IDs of the photos that can be shown, all of them or those `filter` takes in. Photos whose
   /// capture date isn't known, including those not read yet, are only in the first.
-  public func photoIDs(takenIn months: ClosedRange<CaptureMonth>? = nil) throws -> [Int64] {
-    guard let months else {
-      return try database.prepare("SELECT id FROM photos WHERE read_state <> 2").map {
-        try $0.int64(0)
-      }
+  public func photoIDs(matching filter: CaptureFilter? = nil) throws -> [Int64] {
+    try select("id", matching: filter) { try $0.int64(0) }
+  }
+
+  /// How many photos `photoIDs(matching:)` gives.
+  public func count(matching filter: CaptureFilter?) throws -> Int {
+    let counts = try select("count(*)", matching: filter) { try $0.int(0) }
+    guard counts.count == 1 else {
+      throw LibraryError(description: "\(counts.count) rows, not one, from a count")
     }
-    return try database.prepare("SELECT id FROM photos WHERE taken_at >= ? AND taken_at < ?").map(
-      months.lowerBound.prefix, months.upperBound.next.prefix
-    ) { try $0.int64(0) }
+    return counts[0]
+  }
+
+  /// `SELECT columns FROM photos` for the photos `filter` takes in. A range compares whole
+  /// `taken_at` values, which the index serves; days of the year compare the `MM-DD` inside
+  /// them, which reads every row.
+  private func select<T>(
+    _ columns: String, matching filter: CaptureFilter?, row: (SQLiteRow) throws -> T
+  ) throws -> [T] {
+    let sql = "SELECT \(columns) FROM photos WHERE "
+    switch filter {
+    case nil:
+      return try database.prepare(sql + "read_state <> 2").map(row: row)
+    case .between(let lower, let upper):
+      return try database.prepare(sql + "taken_at >= ? AND taken_at < ?").map(
+        lower, upper, row: row)
+    case .daysOfYear(let first, let last) where first <= last:
+      return try database.prepare(sql + "substr(taken_at, 6, 5) BETWEEN ? AND ?").map(
+        first, last, row: row)
+    case .daysOfYear(let first, let last):
+      return try database.prepare(
+        sql + "(substr(taken_at, 6, 5) >= ? OR substr(taken_at, 6, 5) <= ?)"
+      ).map(first, last, row: row)
+    }
   }
 
   /// How many photos were taken in each year, for years with any.
