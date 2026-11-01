@@ -64,10 +64,10 @@ public final class DisplayPower {
   /// or sound doesn't end the slideshow.
   public static let userInputTypes: [CGEventType] = [.keyDown] + pointerInputTypes
 
-  /// Seconds since the last `userInputTypes` event from anyone, or the last
-  /// `pointerInputTypes` one when keys don't count.
-  public static func secondsSinceUserInput(countingKeys: Bool) -> Double {
-    (countingKeys ? userInputTypes : pointerInputTypes).map {
+  /// Seconds since the last `userInputTypes` event from anyone, leaving out key presses or
+  /// `pointerInputTypes` when they don't count. Infinite when neither does.
+  public static func secondsSinceUserInput(countingKeys: Bool, countingPointer: Bool) -> Double {
+    userInputTypes.filter { pointerInputTypes.contains($0) ? countingPointer : countingKeys }.map {
       CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0)
     }.min() ?? .infinity
   }

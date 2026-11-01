@@ -12,6 +12,9 @@ final class AppController: NSObject, NSApplicationDelegate {
   /// on "Show Slideshow" and any input-like event from waking the display.
   static let inputGraceSeconds = 1.0
   static let rescanEverySeconds = 24 * 60 * 60.0
+  /// Seconds without any input after which an open palette closes, so one left open doesn't
+  /// hold the slideshow, and a lit display, on one photo for good.
+  static let paletteIdleSeconds = 60.0
 
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   private let power = DisplayPower()
@@ -273,16 +276,21 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   private func checkInput() {
+    if palette != nil,
+      DisplayPower.secondsSinceUserInput(countingKeys: true, countingPointer: true)
+        >= Self.paletteIdleSeconds
+    {
+      closePalette()
+    }
     let idle = DisplayPower.secondsSinceUserInput(
-      countingKeys: presence.idleCheckCountsKeys(windowGetsKeys: window?.getsKeys == true))
+      countingKeys: presence.idleCheckCountsKeys(windowGetsKeys: window?.getsKeys == true),
+      countingPointer: presence.idleCheckCountsPointer(paletteOpen: palette != nil))
     switch presence {
     case .desktop:
       if let settings, feed != nil, !wasOffHours, idle >= settings.idleMinutes * 60 {
         send(.userIdle)
       }
     case .showing, .displayOff:
-      // The pointer shows to use the palette with.
-      guard palette == nil else { return }
       if idle < ProcessInfo.processInfo.systemUptime - enteredAt - Self.inputGraceSeconds {
         send(.userActive)
       }

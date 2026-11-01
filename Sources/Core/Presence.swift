@@ -86,6 +86,14 @@ public enum Presence: Equatable {
     return !windowGetsKeys
   }
 
+  /// Whether mouse and trackpad input counts in the input idle check. Not while the photos
+  /// show with the command list open, whose rows are clicked with the pointer; keys still count
+  /// whenever the window doesn't get them.
+  public func idleCheckCountsPointer(paletteOpen: Bool) -> Bool {
+    guard case .showing = self else { return true }
+    return !paletteOpen
+  }
+
   /// Whether a sudden light change is worth a motion check now: a light switched on while the
   /// display is off may mean someone came in, and one switched off while the slideshow shows
   /// may mean they left.

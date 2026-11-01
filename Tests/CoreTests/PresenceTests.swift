@@ -109,6 +109,13 @@ final class PresenceTests: XCTestCase {
     XCTAssertTrue(Presence.desktop.idleCheckCountsKeys(windowGetsKeys: false))
   }
 
+  func testIdleCheckLeavesThePointerToAnOpenPalette() {
+    XCTAssertFalse(Presence.showing(emptyChecks: 0).idleCheckCountsPointer(paletteOpen: true))
+    XCTAssertTrue(Presence.showing(emptyChecks: 0).idleCheckCountsPointer(paletteOpen: false))
+    XCTAssertTrue(Presence.displayOff(emptyChecks: 0).idleCheckCountsPointer(paletteOpen: true))
+    XCTAssertTrue(Presence.desktop.idleCheckCountsPointer(paletteOpen: true))
+  }
+
   // MARK: Check schedule
 
   var motion: Settings.Motion {
