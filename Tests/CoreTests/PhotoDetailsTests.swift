@@ -27,9 +27,11 @@ final class PhotoDetailsTests: XCTestCase {
     }
   }
 
-  private func details(_ geocoder: FakeGeocoder) throws -> PhotoDetails {
+  private func details(_ geocoder: FakeGeocoder, lookupDelay: Double = 0) throws -> PhotoDetails {
     _ = try library.open()
-    return try PhotoDetails(databaseURL: library.database, root: library.root, geocoder: geocoder)
+    return try PhotoDetails(
+      databaseURL: library.database, root: library.root, geocoder: geocoder,
+      lookupDelay: lookupDelay)
   }
 
   private let tokyo = Place(subLocality: "Shibuya", locality: "Tokyo", country: "Japan")
@@ -76,6 +78,30 @@ final class PhotoDetailsTests: XCTestCase {
     XCTAssertEqual(calls, 2)
   }
 
+  func testALookupCancelledWhileWaitingAsksNothing() async throws {
+    let geocoder = FakeGeocoder(tokyo)
+    let details = try details(geocoder, lookupDelay: 0.5)
+    let lookup = Task { try await details.lookUpPlace(latitude: 35.6595, longitude: 139.7005) }
+    try await Task.sleep(nanoseconds: 100_000_000)
+    lookup.cancel()
+    do {
+      _ = try await lookup.value
+      XCTFail("expected a cancellation")
+    } catch is CancellationError {}
+    let calls = await geocoder.calls
+    XCTAssertEqual(calls, 0)
+  }
+
+  func testACachedPlaceDoesNotWait() async throws {
+    let geocoder = FakeGeocoder(tokyo)
+    _ = try await details(geocoder).lookUpPlace(latitude: 35.6595, longitude: 139.7005)
+    let waiting = try details(geocoder, lookupDelay: 60)
+    let started = Date()
+    let place = try await waiting.lookUpPlace(latitude: 35.6595, longitude: 139.7005)
+    XCTAssertEqual(place, .named("Shibuya, Tokyo, Japan"))
+    XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+  }
+
   func testNoPlaceThereIsRememberedToo() async throws {
     let geocoder = FakeGeocoder(nil)
     let details = try details(geocoder)
@@ -92,7 +118,7 @@ final class PhotoDetailsTests: XCTestCase {
     _ = try await details(geocoder).lookUpPlace(latitude: 35.6595, longitude: 139.7005)
     try PhotoLibrary(at: library.database).use(root: library.base)
     let reopened = try PhotoDetails(
-      databaseURL: library.database, root: library.base, geocoder: geocoder)
+      databaseURL: library.database, root: library.base, geocoder: geocoder, lookupDelay: 0)
     let cached = try await reopened.cachedPlace(latitude: 35.6595, longitude: 139.7005)
     XCTAssertEqual(cached, .named("Shibuya, Tokyo, Japan"))
   }

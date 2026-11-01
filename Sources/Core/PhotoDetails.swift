@@ -7,12 +7,21 @@ public actor PhotoDetails {
   private let library: PhotoLibrary
   private let root: URL
   private let geocoder: any Geocoder
+  private let lookupDelay: Double
+
+  /// Seconds a lookup waits before asking the geocoder, so stepping quickly through photos,
+  /// which cancels each lookup, doesn't spend Apple's rate limit on photos passed by.
+  public static let lookupDelaySeconds = 1.0
 
   /// Opens its own connection to the database at `databaseURL`, whose photos are in `root`.
-  public init(databaseURL: URL, root: URL, geocoder: any Geocoder) throws {
+  public init(
+    databaseURL: URL, root: URL, geocoder: any Geocoder,
+    lookupDelay: Double = PhotoDetails.lookupDelaySeconds
+  ) throws {
     library = try PhotoLibrary(at: databaseURL)
     self.root = root
     self.geocoder = geocoder
+    self.lookupDelay = lookupDelay
   }
 
   /// Nil when no photo has `id`, e.g. because a scan removed it. Its metadata is nil until the
@@ -34,10 +43,14 @@ public actor PhotoDetails {
     try library.place(at: PlaceKey(latitude: latitude, longitude: longitude))
   }
 
-  /// The place at these coordinates, from the cache or else from the geocoder. A geocoder
-  /// error isn't cached, so the next lookup asks again; finding nothing there is.
+  /// The place at these coordinates, from the cache at once, or else from the geocoder after
+  /// `lookupDelay` seconds; cancelling the task in that time asks nothing. A geocoder error
+  /// isn't cached, so the next lookup asks again; finding nothing there is.
   public func lookUpPlace(latitude: Double, longitude: Double) async throws -> CachedPlace {
     let key = PlaceKey(latitude: latitude, longitude: longitude)
+    if let cached = try library.place(at: key) { return cached }
+    try await Task.sleep(nanoseconds: UInt64(lookupDelay * 1e9))
+    // Another photo in the same cell may have been looked up meanwhile.
     if let cached = try library.place(at: key) { return cached }
     // The photo's own coordinates rather than the cell's center, which can be a kilometer
     // away and outside the park or landmark the photo was taken in.
