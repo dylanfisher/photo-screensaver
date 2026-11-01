@@ -71,7 +71,13 @@ final class TimeframeTests: XCTestCase {
 
   func testMonthsStepAcrossYears() {
     XCTAssertEqual(CaptureMonth(year: 2014, month: 12).next, CaptureMonth(year: 2015, month: 1))
-    XCTAssertEqual(CaptureMonth(year: 2015, month: 1).previous, CaptureMonth(year: 2014, month: 12))
+    XCTAssertEqual(
+      CaptureMonth(year: 2015, month: 1).adding(months: -1), CaptureMonth(year: 2014, month: 12))
+    XCTAssertEqual(
+      CaptureMonth(year: 2015, month: 3).adding(months: -27), CaptureMonth(year: 2012, month: 12))
+    XCTAssertEqual(
+      CaptureMonth(year: 2015, month: 3).adding(months: 22), CaptureMonth(year: 2017, month: 1))
+    XCTAssertEqual(CaptureMonth(year: 0, month: 1).adding(months: -1).month, 12)
   }
 
   private func decode(_ json: String) throws -> Timeframe {

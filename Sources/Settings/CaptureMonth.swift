@@ -39,9 +39,12 @@ public struct CaptureMonth: Comparable, Hashable, Codable, Sendable, CustomStrin
       ? CaptureMonth(year: year + 1, month: 1) : CaptureMonth(year: year, month: month + 1)
   }
 
-  public var previous: CaptureMonth {
-    month == 1
-      ? CaptureMonth(year: year - 1, month: 12) : CaptureMonth(year: year, month: month - 1)
+  /// The month `months` later, or earlier for a negative count.
+  public func adding(months: Int) -> CaptureMonth {
+    let index = year * 12 + (month - 1) + months
+    // Division rounds toward zero, so below year 0 the year needs rounding down.
+    let year = index / 12 - (index % 12 < 0 ? 1 : 0)
+    return CaptureMonth(year: year, month: index - year * 12 + 1)
   }
 
   /// Short English month names, as the rest of the app's text is English.

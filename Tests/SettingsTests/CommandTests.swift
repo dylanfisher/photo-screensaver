@@ -30,13 +30,14 @@ final class CommandTests: XCTestCase {
     XCTAssertEqual(Command.info.defaultKey.description, "up")
     XCTAssertEqual(Command.speed3.defaultKey.description, "3")
     XCTAssertEqual(Command.pause.defaultKey.description, "space")
+    XCTAssertEqual(Command.timeframe.defaultKey.description, "t")
     XCTAssertEqual(Command.rescan.defaultKey.description, "cmd+r")
     XCTAssertEqual(Command.settings.defaultKey.description, "cmd+,")
     XCTAssertEqual(Command.palette.defaultKey.description, "cmd+k")
   }
 
   func testOnlyStepsRepeatAmongTheNewCommands() {
-    for command in [Command.pause, .rescan, .settings, .palette] {
+    for command in [Command.pause, .timeframe, .rescan, .settings, .palette] {
       XCTAssertFalse(command.repeats, command.rawValue)
       XCTAssertNil(command.slideSeconds, command.rawValue)
     }

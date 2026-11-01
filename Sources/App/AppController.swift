@@ -494,22 +494,30 @@ final class AppController: NSObject, NSApplicationDelegate {
       send(.userActive)
       editSettings()
     case .palette:
-      openPalette()
+      openPalette(choosingTimeframe: false)
+    case .timeframe:
+      openPalette(choosingTimeframe: true)
     }
   }
 
-  private func openPalette() {
+  /// Opens the palette on the command list, or on the timeframe picker.
+  private func openPalette(choosingTimeframe: Bool) {
     guard palette == nil, let window, let settings else { return }
-    let palette = PaletteController(
-      view: window.palette, keys: settings.keys,
+    let actions = PaletteController.Actions(
       run: { [weak self] command in
         self?.closePalette()
         self?.run(command)
       },
-      close: { [weak self] in self?.closePalette() })
+      close: { [weak self] in self?.closePalette() },
+      countChoices: { [weak self] done in self?.library.timeframeCounts(then: done) },
+      count: { [weak self] timeframe, done in self?.library.count(timeframe, then: done) },
+      apply: { [weak self] timeframe, count in self?.setTimeframe(timeframe, count: count) })
+    let palette = PaletteController(
+      view: window.palette, keys: settings.keys, current: settings.timeframe,
+      readingDates: (scanProgress?.unread ?? 0) > 0, actions: actions)
     self.palette = palette
     window.openPalette()
-    palette.showCommands()
+    if choosingTimeframe { palette.showTimeframes() } else { palette.showCommands() }
     // The loop stops once it has shown the photo it's on.
     runSlides()
   }
@@ -597,6 +605,35 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
     reloadSettingsIfChanged()
     window?.showMessage(title)
+  }
+
+  /// Saves the timeframe to the config file, applies it the way any edit to that file is
+  /// applied, which rebuilds the feed from it, and moves on to a photo from it. Reads the file
+  /// first, like `setSpeed`.
+  private func setTimeframe(_ timeframe: Timeframe, count: Int) {
+    do {
+      var saved = try Settings.load()
+      if saved.timeframe != timeframe {
+        saved.timeframe = timeframe
+        try saved.save()
+      }
+    } catch {
+      closePalette()
+      window?.showMessage("Can't change timeframe: \(error)")
+      return
+    }
+    // The step below restarts the slide loop.
+    closePalette(resuming: false)
+    reloadSettingsIfChanged()
+    let photos = PaletteController.photos(count)
+    switch timeframe {
+    case .all: window?.showMessage("Showing all \(photos)")
+    case .onThisDay, .lastMonths:
+      window?.showMessage("Showing \(timeframe.title.lowercased()) · \(photos)")
+    case .range: window?.showMessage("Showing \(timeframe.title) · \(photos)")
+    }
+    history.forward()
+    runSlides()
   }
 
   /// Also drops preloaded photos, which can be hundreds of MB, while nothing is on screen.
@@ -734,8 +771,35 @@ private final class LibraryConnection: @unchecked Sendable {
     }
   }
 
-  private func run(
-    _ done: @escaping @MainActor (Result<Int, Error>) -> Void, _ body: @escaping () throws -> Int
+  /// Every count the timeframe picker shows, as of today.
+  func timeframeCounts(
+    then done: @escaping @MainActor (Result<TimeframePicker.Counts, Error>) -> Void
+  ) {
+    run(done) { [self] in
+      try TimeframePicker.Counts(library: openConnection(), today: Date(), calendar: .current)
+    }
+  }
+
+  /// How many photos `timeframe` shows today.
+  func count(_ timeframe: Timeframe, then done: @escaping @MainActor (Result<Int, Error>) -> Void) {
+    run(done) { [self] in
+      try openConnection().count(
+        matching: CaptureFilter(timeframe, today: Date(), calendar: .current))
+    }
+  }
+
+  /// The palette can ask while another folder's database is opening, or after it failed to.
+  private func openConnection() throws -> PhotoLibrary {
+    guard let connection else { throw NotOpen() }
+    return connection
+  }
+
+  private struct NotOpen: Error, CustomStringConvertible {
+    var description: String { "the library database isn't open" }
+  }
+
+  private func run<T>(
+    _ done: @escaping @MainActor (Result<T, Error>) -> Void, _ body: @escaping () throws -> T
   ) {
     queue.async {
       let result = Result(catching: body)

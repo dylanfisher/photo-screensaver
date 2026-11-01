@@ -135,7 +135,7 @@ final class PaletteView: NSVisualEffectView, NSTextFieldDelegate {
     relayout()
   }
 
-  /// Selects the first row, as after the user types a filter.
+  /// Changes the rows and selects `selection`, such as the first after the user types.
   func update(rows: [Row], selection: Int, footer: String? = nil) {
     self.selection = selection
     firstVisible = 0

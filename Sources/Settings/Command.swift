@@ -7,6 +7,8 @@ public enum Command: String, CaseIterable, CodingKey {
   case pause
   /// Shows or hides the photo info panel.
   case info
+  /// Opens the timeframe picker, to choose which photos show by when they were taken.
+  case timeframe
   case speed1, speed2, speed3, speed4, speed5
   /// Reads the library folder again for new, changed and removed photos.
   case rescan
@@ -22,6 +24,7 @@ public enum Command: String, CaseIterable, CodingKey {
     case .previous: return "Previous Photo"
     case .pause: return "Pause or Resume"
     case .info: return "Show Photo Info"
+    case .timeframe: return "Choose Timeframe…"
     case .speed1, .speed2, .speed3, .speed4, .speed5:
       guard let seconds = slideSeconds else {
         preconditionFailure("every speed command sets slideSeconds")
@@ -40,6 +43,7 @@ public enum Command: String, CaseIterable, CodingKey {
     case .previous: return KeySpec(.named(.left))
     case .pause: return KeySpec(.named(.space))
     case .info: return KeySpec(.named(.up))
+    case .timeframe: return KeySpec(.character("t"))
     case .speed1: return KeySpec(.character("1"))
     case .speed2: return KeySpec(.character("2"))
     case .speed3: return KeySpec(.character("3"))
@@ -62,7 +66,7 @@ public enum Command: String, CaseIterable, CodingKey {
     case .speed3: return 30
     case .speed4: return 60
     case .speed5: return 300
-    case .next, .previous, .pause, .info, .rescan, .settings, .palette: return nil
+    case .next, .previous, .pause, .info, .timeframe, .rescan, .settings, .palette: return nil
     }
   }
 
@@ -71,7 +75,7 @@ public enum Command: String, CaseIterable, CodingKey {
   public var repeats: Bool {
     switch self {
     case .next, .previous: return true
-    case .pause, .info, .speed1, .speed2, .speed3, .speed4, .speed5, .rescan, .settings,
+    case .pause, .info, .timeframe, .speed1, .speed2, .speed3, .speed4, .speed5, .rescan, .settings,
       .palette:
       return false
     }
