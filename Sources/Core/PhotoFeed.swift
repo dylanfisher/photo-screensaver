@@ -5,6 +5,8 @@ import Settings
 import os
 
 public struct Photo {
+  /// The photo's ID in the library database.
+  public let id: Int64
   public let url: URL
   public let image: CGImage
 
@@ -41,6 +43,8 @@ public actor PhotoFeed {
   private var waiters: [CheckedContinuation<Void, Error>] = []
   /// Bumped by `drop()`, so a load that finishes afterwards is discarded instead of buffered.
   private var generation = 0
+  /// Calls to `photo(_:)` under way, which hold off new preloads.
+  private var revisits = 0
 
   /// Opens its own connection to the database at `databaseURL`, whose photos are in `root`.
   public init(databaseURL: URL, root: URL, settings: Settings, screenPixels: CGSize) throws {
@@ -67,6 +71,44 @@ public actor PhotoFeed {
     return photo
   }
 
+  /// Decodes a photo shown before, for going back to it, without keeping it in the feed. Waits
+  /// for a preload under way instead of decoding alongside it, and preloads wait for it.
+  /// Doesn't check orientation, since the photo was shown once already.
+  public func photo(_ id: Int64) async throws -> Photo {
+    revisits += 1
+    let result: Result<Photo, Error>
+    do {
+      result = .success(try await revisit(id))
+    } catch {
+      result = .failure(error)
+    }
+    revisits -= 1
+    fill()
+    return try result.get()
+  }
+
+  private func revisit(_ id: Int64) async throws -> Photo {
+    while let running = loader {
+      await running.value
+      try Task.checkCancellation()
+    }
+    try Task.checkCancellation()
+    guard let path = try library.photo(id)?.path else {
+      throw FeedError(description: "that photo is no longer in the library")
+    }
+    let url = root.appendingPathComponent(path)
+    let decode = Task.detached { [settings, screenPixels] in
+      try Self.decode(id, url, settings: settings, screenPixels: screenPixels, anyOrientation: true)
+    }
+    // As the loader, it keeps `fill()` and other revisits from decoding at the same time.
+    loader = Task { _ = await decode.result }
+    defer { loader = nil }
+    guard let photo = try await decode.value else {
+      preconditionFailure("decoding in any orientation always gives a photo")
+    }
+    return photo
+  }
+
   /// Picks up what a scan changed, starting a new shuffle. Photos already decoded are still
   /// shown.
   public func reload() {
@@ -85,7 +127,8 @@ public actor PhotoFeed {
   }
 
   private func fill() {
-    guard loader == nil, failure == nil, ready.count < settings.preloadCount else { return }
+    guard loader == nil, revisits == 0, failure == nil, ready.count < settings.preloadCount
+    else { return }
     let generation = generation
     loader = Task.detached { [self] in
       let result: Result<Photo, Error>
@@ -128,9 +171,11 @@ public actor PhotoFeed {
       // After `drop()`, stop instead of reading more files from the NAS.
       try Task.checkCancellation()
       // Nil for a photo a scan removed since the IDs were read.
-      guard let url = try await nextURL() else { continue }
+      guard let (id, url) = try await nextPhoto() else { continue }
       do {
-        if let photo = try Self.decode(url, settings: settings, screenPixels: screenPixels) {
+        if let photo = try Self.decode(
+          id, url, settings: settings, screenPixels: screenPixels, anyOrientation: false)
+        {
           return photo
         }
       } catch {
@@ -147,37 +192,40 @@ public actor PhotoFeed {
         "no \(settings.orientation.rawValue) photos in \(Self.maxOrientationChecks) checked")
   }
 
-  private func nextURL() throws -> URL? {
+  private func nextPhoto() throws -> (Int64, URL)? {
     var queue = try self.queue ?? ShuffleQueue(library.photoIDs())
     defer { self.queue = queue }
     guard let id = queue.next() else {
       throw FeedError(description: "no photos in \(root.path)")
     }
-    return try library.photo(id).map { root.appendingPathComponent($0.path) }
+    return try library.photo(id).map { (id, root.appendingPathComponent($0.path)) }
   }
 
   /// Nil when the photo doesn't match the orientation setting.
   private static func decode(
-    _ url: URL, settings: Settings, screenPixels: CGSize
+    _ id: Int64, _ url: URL, settings: Settings, screenPixels: CGSize, anyOrientation: Bool
   ) throws -> Photo? {
     // ImageIO autoreleases objects that hold the full decoded pixels, and Swift concurrency's
     // threads never drain an autorelease pool, so without this every photo stays in memory.
-    try autoreleasepool { try decodeUnpooled(url, settings: settings, screenPixels: screenPixels) }
+    try autoreleasepool {
+      try decodeUnpooled(
+        id, url, settings: settings, screenPixels: screenPixels, anyOrientation: anyOrientation)
+    }
   }
 
   private static func decodeUnpooled(
-    _ url: URL, settings: Settings, screenPixels: CGSize
+    _ id: Int64, _ url: URL, settings: Settings, screenPixels: CGSize, anyOrientation: Bool
   ) throws -> Photo? {
     let file = try ImageFile(url: url)
     let size = try file.displaySize()
     switch settings.orientation {
-    case .landscape where size.width < size.height: return nil
-    case .portrait where size.width > size.height: return nil
+    case .landscape where !anyOrientation && size.width < size.height: return nil
+    case .portrait where !anyOrientation && size.width > size.height: return nil
     default: break
     }
     let edge = decodeLongEdge(
       photo: size, screenPixels: screenPixels, scaling: settings.scaling,
       zoom: settings.kenBurns ? KenBurns.maxScale : 1)
-    return Photo(url: url, image: try file.decode(maxPixelSize: edge))
+    return Photo(id: id, url: url, image: try file.decode(maxPixelSize: edge))
   }
 }

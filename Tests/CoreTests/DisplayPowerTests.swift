@@ -11,4 +11,11 @@ final class DisplayPowerTests: XCTestCase {
     XCTAssertTrue(types.contains(CGEventType.keyDown.rawValue))
     XCTAssertTrue(types.contains(CGEventType.mouseMoved.rawValue))
   }
+
+  func testPointerInputLeavesOutKeys() {
+    let types = DisplayPower.pointerInputTypes.map(\.rawValue)
+    XCTAssertFalse(types.contains(CGEventType.keyDown.rawValue))
+    XCTAssertTrue(types.contains(CGEventType.leftMouseDown.rawValue))
+    XCTAssertTrue(types.contains(CGEventType.mouseMoved.rawValue))
+  }
 }

@@ -141,6 +141,48 @@ final class PhotoFeedTests: XCTestCase {
     }
   }
 
+  func testRevisitDecodesAPhotoShownBefore() async throws {
+    try library.jpeg("a.jpg")
+    let feed = try makeFeed()
+    let shown = try await feed.next()
+    let again = try await feed.photo(shown.id)
+    XCTAssertEqual(again.id, shown.id)
+    XCTAssertEqual(again.url, shown.url)
+    XCTAssertEqual(again.size, shown.size)
+  }
+
+  func testRevisitIgnoresOrientation() async throws {
+    try library.jpeg("tall.jpg", width: 20, height: 30)
+    let first = try makeFeed()
+    let tall = try await first.next()
+    var settings = Settings.starter
+    settings.orientation = .landscape
+    let feed = try makeFeed(settings)
+    let photo = try await feed.photo(tall.id)
+    XCTAssertEqual(photo.url.lastPathComponent, "tall.jpg")
+  }
+
+  func testRevisitOfARemovedPhotoThrows() async throws {
+    try library.jpeg("a.jpg")
+    let feed = try makeFeed()
+    let shown = try await feed.next()
+    do {
+      _ = try await feed.photo(shown.id + 1)
+      XCTFail("expected an error")
+    } catch let error as FeedError {
+      XCTAssertTrue(error.description.contains("no longer"), error.description)
+    }
+  }
+
+  func testPreloadsCarryOnAfterARevisit() async throws {
+    for name in ["a", "b"] { try library.jpeg("\(name).jpg") }
+    let feed = try makeFeed()
+    let first = try await feed.next()
+    _ = try await feed.photo(first.id)
+    let second = try await feed.next()
+    XCTAssertNotEqual(second.id, first.id)
+  }
+
   private func makeFeed(
     _ settings: Settings = .starter, screen: CGSize = CGSize(width: 2560, height: 1600)
   ) throws -> PhotoFeed {

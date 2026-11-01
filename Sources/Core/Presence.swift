@@ -27,6 +27,14 @@ public enum Presence: Equatable {
     case startSlideshow, stopSlideshow, pauseSlideshow, resumeSlideshow, sleepDisplay, wakeDisplay
   }
 
+  /// What a key press in the slideshow window does.
+  public enum KeyResponse: Equatable {
+    case run(Command)
+    /// The user is back: send `userActive`.
+    case exit
+    case ignore
+  }
+
   public func handle(_ event: Event) -> (Presence, [Effect]) {
     switch (self, event) {
     case (.desktop, .userIdle), (.desktop, .showNow):
@@ -53,6 +61,29 @@ public enum Presence: Equatable {
     default:
       return (self, [])
     }
+  }
+
+  /// Responds to a key press in the slideshow window, given the command bound to it, if any.
+  /// While the photos show, a bound key runs its command; an unbound key ends the slideshow, as
+  /// does any key while the display is off. Ending waits out the input grace period, like
+  /// other input, so a key pressed as the slideshow starts doesn't end it.
+  public func respond(toKey bound: Command?, isRepeat: Bool, inGracePeriod: Bool) -> KeyResponse {
+    switch (self, bound) {
+    case (.desktop, _):
+      return .ignore
+    case (.showing, .some(let command)):
+      return isRepeat && !command.repeats ? .ignore : .run(command)
+    case (.showing, .none), (.displayOff, _):
+      return inGracePeriod ? .ignore : .exit
+    }
+  }
+
+  /// Whether key presses count in the input idle check. While the photos show, the slideshow
+  /// window handles them instead, but only while it's the key window of the active app: a
+  /// window that isn't gets no key presses, and keys must still end the slideshow.
+  public func idleCheckCountsKeys(windowGetsKeys: Bool) -> Bool {
+    guard case .showing = self else { return true }
+    return !windowGetsKeys
   }
 
   /// Whether a sudden light change is worth a motion check now: a light switched on while the

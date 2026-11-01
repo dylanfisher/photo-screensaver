@@ -75,6 +75,40 @@ final class PresenceTests: XCTestCase {
     XCTAssertFalse(Presence.desktop.checksNow(after: .brighter))
   }
 
+  // MARK: Keys
+
+  func testBoundKeysRunTheirCommandWhileShowing() {
+    let showing = Presence.showing(emptyChecks: 1)
+    XCTAssertEqual(
+      showing.respond(toKey: .next, isRepeat: false, inGracePeriod: false), .run(.next))
+    XCTAssertEqual(
+      showing.respond(toKey: .previous, isRepeat: true, inGracePeriod: false), .run(.previous))
+    XCTAssertEqual(
+      showing.respond(toKey: .speed2, isRepeat: false, inGracePeriod: true), .run(.speed2))
+    XCTAssertEqual(showing.respond(toKey: .speed2, isRepeat: true, inGracePeriod: false), .ignore)
+  }
+
+  func testUnboundKeysEndTheSlideshowAfterTheGracePeriod() {
+    let showing = Presence.showing(emptyChecks: 0)
+    XCTAssertEqual(showing.respond(toKey: nil, isRepeat: false, inGracePeriod: false), .exit)
+    XCTAssertEqual(showing.respond(toKey: nil, isRepeat: false, inGracePeriod: true), .ignore)
+  }
+
+  func testAnyKeyWakesFromDisplayOff() {
+    let off = Presence.displayOff(emptyChecks: 2)
+    XCTAssertEqual(off.respond(toKey: .next, isRepeat: false, inGracePeriod: false), .exit)
+    XCTAssertEqual(off.respond(toKey: nil, isRepeat: false, inGracePeriod: false), .exit)
+    XCTAssertEqual(
+      Presence.desktop.respond(toKey: nil, isRepeat: false, inGracePeriod: false), .ignore)
+  }
+
+  func testIdleCheckLeavesKeysToTheWindowOnlyWhileShowing() {
+    XCTAssertFalse(Presence.showing(emptyChecks: 0).idleCheckCountsKeys(windowGetsKeys: true))
+    XCTAssertTrue(Presence.showing(emptyChecks: 0).idleCheckCountsKeys(windowGetsKeys: false))
+    XCTAssertTrue(Presence.displayOff(emptyChecks: 0).idleCheckCountsKeys(windowGetsKeys: true))
+    XCTAssertTrue(Presence.desktop.idleCheckCountsKeys(windowGetsKeys: false))
+  }
+
   // MARK: Check schedule
 
   var motion: Settings.Motion {

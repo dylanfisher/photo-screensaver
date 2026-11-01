@@ -33,6 +33,9 @@ final class AppController: NSObject, NSApplicationDelegate {
   /// stops while the Mac sleeps; wall-clock time doesn't.
   private var enteredAt = ProcessInfo.processInfo.systemUptime
   private var window: SlideshowWindow?
+  private var history = SlideHistory()
+  /// The photo in `window`, so stepping back to it, or changing speed, doesn't decode it again.
+  private var shownID: Int64?
   private var slideTask: Task<Void, Never>?
   private var motionTask: Task<Void, Never>?
   /// Uptime when the scheduled motion check starts; until then its task is only waiting.
@@ -99,12 +102,19 @@ final class AppController: NSObject, NSApplicationDelegate {
     if loaded.libraryURL != old?.libraryURL {
       // Its next write would fail anyway, once the database is in use for the new folder.
       scan?.cancel()
+      // Its photo IDs belong to the old library.
+      history = SlideHistory()
       openLibrary(for: loaded)
       rescan()
     } else if loaded.scaling != old?.scaling || loaded.orientation != old?.orientation
       || loaded.preloadCount != old?.preloadCount || loaded.kenBurns != old?.kenBurns
     {
       rebuildFeed()
+    }
+    if loaded.slideSeconds != old?.slideSeconds, slideTask != nil {
+      // The current photo gets a whole slide at the new speed.
+      window?.retime(settings: loaded)
+      runSlides()
     }
     if loaded.motion != old?.motion {
       errors["motion"] = nil
@@ -233,7 +243,8 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   private func checkInput() {
-    let idle = DisplayPower.secondsSinceUserInput()
+    let idle = DisplayPower.secondsSinceUserInput(
+      countingKeys: presence.idleCheckCountsKeys(windowGetsKeys: window?.getsKeys == true))
     switch presence {
     case .desktop:
       if let settings, feed != nil, !wasOffHours, idle >= settings.idleMinutes * 60 {
@@ -243,6 +254,18 @@ final class AppController: NSObject, NSApplicationDelegate {
       if idle < ProcessInfo.processInfo.systemUptime - enteredAt - Self.inputGraceSeconds {
         send(.userActive)
       }
+    }
+  }
+
+  private func handleKey(_ event: NSEvent) {
+    let bound = KeySpec(event).flatMap { settings?.keys.command(for: $0) }
+    let inGracePeriod =
+      ProcessInfo.processInfo.systemUptime - enteredAt <= Self.inputGraceSeconds
+    switch presence.respond(toKey: bound, isRepeat: event.isARepeat, inGracePeriod: inGracePeriod)
+    {
+    case .run(let command): run(command)
+    case .exit: send(.userActive)
+    case .ignore: break
     }
   }
 
@@ -306,6 +329,7 @@ final class AppController: NSObject, NSApplicationDelegate {
       }
       errors["screen"] = nil
       let window = SlideshowWindow(screen: screen)
+      window.onKey = { [weak self] event in self?.handleKey(event) }
       window.open()
       self.window = window
       keepAwake(display: true)
@@ -314,6 +338,7 @@ final class AppController: NSObject, NSApplicationDelegate {
       stopSlides()
       window?.close()
       window = nil
+      shownID = nil
       keepAwake(display: false)
     case .pauseSlideshow:
       stopSlides()
@@ -336,16 +361,34 @@ final class AppController: NSObject, NSApplicationDelegate {
     record("system power") { try power.keepSystemAwake(checkingMotion) }
   }
 
+  /// Moves on from the photo shown before, as when the slideshow starts or the display wakes.
   private func startSlides() {
+    history.forward()
+    runSlides()
+  }
+
+  /// Shows the history's target, then a slide's length later steps forward and repeats.
+  /// Restarting it is how every change takes effect: a step shows its photo with a whole slide
+  /// ahead of it, and a load still under way for an earlier step is dropped.
+  private func runSlides() {
     slideTask?.cancel()
     slideTask = Task {
       // `window` is nil once the slideshow closes, which also ends this loop.
       while !Task.isCancelled, let settings, let window {
         if let feed {
           do {
-            let photo = try await feed.next()
+            let photo: Photo?
+            switch history.target {
+            case .photo(let id) where id == shownID: photo = nil
+            case .photo(let id): photo = try await feed.photo(id)
+            case .new: photo = try await feed.next()
+            }
             if Task.isCancelled { return }
-            window.show(photo, settings: settings)
+            if let photo {
+              if history.target == .new { history.add(photo.id) }
+              window.show(photo, settings: settings)
+              shownID = photo.id
+            }
             errors["photos"] = nil
           } catch is CancellationError {
             // The feed was replaced mid-load by a settings change; the next pass uses the new one.
@@ -359,8 +402,44 @@ final class AppController: NSObject, NSApplicationDelegate {
           errors["photos"] = "No photos to show yet; waiting for the library scan"
         }
         try? await Task.sleep(nanoseconds: UInt64(settings.slideSeconds * 1e9))
+        if Task.isCancelled { return }
+        history.forward()
       }
     }
+  }
+
+  private func run(_ command: Command) {
+    switch command {
+    case .next:
+      history.forward()
+      runSlides()
+    case .previous:
+      guard history.back() else { return }
+      runSlides()
+    case .speed1, .speed2, .speed3, .speed4, .speed5:
+      guard let seconds = command.slideSeconds else {
+        preconditionFailure("every speed command sets slideSeconds")
+      }
+      setSpeed(seconds, title: command.title)
+    }
+  }
+
+  /// Saves the speed to the config file and applies it the way any edit to that file is
+  /// applied. Reads the file first rather than saving `settings`, so a hand edit not yet picked
+  /// up isn't overwritten, and a file with errors isn't replaced at all.
+  private func setSpeed(_ seconds: Double, title: String) {
+    do {
+      var saved = try Settings.load()
+      if saved.slideSeconds != seconds {
+        saved.slideSeconds = seconds
+        try saved.save()
+      }
+    } catch {
+      window?.showMessage("Can't change speed: \(error)")
+      return
+    }
+    reloadSettingsIfChanged()
+    window?.showMessage(title)
   }
 
   /// Also drops preloaded photos, which can be hundreds of MB, while nothing is on screen.

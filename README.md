@@ -23,8 +23,20 @@ library, with optional motion-activated display wake.
 Agents and contributors: start with [AGENTS.md](AGENTS.md).
 
 The app lives in the menu bar. The slideshow starts after `idleMinutes` without input, or from
-**Show Slideshow** in the menu, and any key press or mouse movement ends it. Problems (an
-unmounted share, a bad setting, camera access denied) appear in the menu with a ⚠︎ icon.
+**Show Slideshow** in the menu. Mouse movement, a click, or any key without a command ends it.
+Problems (an unmounted share, a bad setting, camera access denied) appear in the menu with a ⚠︎
+icon.
+
+While the slideshow shows, these keys work, and each can be changed under `keys` in the settings:
+
+| Key | Command (`keys` name) | Does |
+|---|---|---|
+| → | `next` | Shows the next photo. After going back, steps forward through those photos first. |
+| ← | `previous` | Goes back through the photos shown before. |
+| 1–5 | `speed1` … `speed5` | Shows each photo for 5 s, 15 s, 30 s, 1 min or 5 min, and saves that as `slideSeconds`. |
+
+Moving to another photo, or changing speed, gives the photo on screen a full `slideSeconds`.
+While the display is off, any key wakes it to the desktop.
 
 ## Settings
 
@@ -50,6 +62,7 @@ and reloads it on save. Every key is required.
 | `motion.threshold` | Fraction (0–1) of any one cell of an 8×6 grid over the camera image that must change to count as motion. Lower catches smaller or more distant movement. |
 | `offHours.enabled` | Turn the slideshow off for part of each day. |
 | `offHours.start`, `offHours.end` | 24-hour local times like `"00:00"` and `"09:00"`. A start later than the end spans midnight. In between, the slideshow doesn't start and the camera stays off. A slideshow that's showing when they begin stops, and the display sleeps. Choosing **Show Slideshow** still works. |
+| `keys.<command>` | Key for each command in the table above, like `"right"`, `"1"` or `"cmd+k"`: modifiers (`ctrl`, `option`, `shift`, `cmd`) joined by `+`, then one character or `left`, `right`, `up`, `down`, `space`, `tab`, `return`, `escape` or `delete`. Every command needs a key, and no two can share one. |
 
 The library database, `~/Library/Caches/photo-screensaver/library.sqlite`, is rescanned at
 launch, daily, and from **Rescan Library**. The first scan also reads each photo's date, camera

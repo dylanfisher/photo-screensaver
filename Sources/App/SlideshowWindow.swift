@@ -5,12 +5,28 @@ import Settings
 /// A borderless black window over the whole screen, above everything including the menu bar.
 /// Each photo is its own layer, faded in over the previous one.
 final class SlideshowWindow {
-  private let window: NSWindow
+  /// How long a message shows before it fades.
+  static let messageSeconds = 2.0
+
+  private let window: KeyWindow
   private let root = CALayer()
   private var current: CALayer?
+  private let message = CALayer()
+  private let messageText = CATextLayer()
+  /// Bumped by each message, so only the latest one's timer fades it.
+  private var messageCount = 0
+
+  /// Called with each key press, including repeats from a key held down.
+  var onKey: ((NSEvent) -> Void)? {
+    get { window.onKey }
+    set { window.onKey = newValue }
+  }
+
+  /// Whether key presses reach this window: it's the key window of the active app.
+  var getsKeys: Bool { NSApp.isActive && window.isKeyWindow }
 
   init(screen: NSScreen) {
-    window = NSWindow(
+    window = KeyWindow(
       contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
     window.setFrame(screen.frame, display: false)
     window.level = .screenSaver
@@ -26,11 +42,22 @@ final class SlideshowWindow {
     root.backgroundColor = .black
     root.masksToBounds = true
     window.contentView = view
+
+    // Above every photo, which are added later.
+    message.zPosition = 1
+    message.opacity = 0
+    message.backgroundColor = CGColor(gray: 0, alpha: 0.6)
+    message.cornerRadius = 12
+    messageText.contentsScale = screen.backingScaleFactor
+    message.addSublayer(messageText)
+    root.addSublayer(message)
   }
 
-  /// Activates the app, since macOS ignores cursor hiding from a background app.
+  /// Activates the app, since macOS ignores cursor hiding from a background app, and makes the
+  /// window key so key presses come here.
   func open() {
     NSApp.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
     window.orderFrontRegardless()
     NSCursor.hide()
   }
@@ -108,6 +135,59 @@ final class SlideshowWindow {
     current = layer
   }
 
+  /// Restarts the current photo's pan from where it is, to last a slide of the new length and
+  /// its fade, so it doesn't stop partway through a longer slide.
+  func retime(settings: Settings) {
+    guard let layer = current, let pan = layer.animation(forKey: "kenBurns") as? CABasicAnimation,
+      let now = layer.presentation()?.transform
+    else { return }
+    let retimed = CABasicAnimation(keyPath: "transform")
+    retimed.fromValue = now
+    retimed.toValue = pan.toValue
+    retimed.duration = settings.slideSeconds + settings.transitionSeconds
+    retimed.timingFunction = CAMediaTimingFunction(name: .linear)
+    layer.add(retimed, forKey: "kenBurns")
+  }
+
+  /// Shows `text` near the bottom of the screen for `messageSeconds`, light on a dark panel so
+  /// it reads over any photo. A new message replaces the one showing.
+  func showMessage(_ text: String) {
+    let font = NSFont.systemFont(ofSize: 28, weight: .medium)
+    let attributed = NSAttributedString(
+      string: text, attributes: [.font: font, .foregroundColor: NSColor.white])
+    let textSize = attributed.size()
+    let padding = CGSize(width: 24, height: 12)
+    let textFrame = CGRect(
+      x: padding.width, y: padding.height, width: ceil(textSize.width),
+      height: ceil(textSize.height))
+
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    messageText.string = attributed
+    messageText.frame = textFrame
+    message.bounds = textFrame.insetBy(dx: -padding.width, dy: -padding.height)
+    message.bounds.origin = .zero
+    message.position = CGPoint(x: root.bounds.midX, y: root.bounds.height * 0.12)
+    message.removeAnimation(forKey: "fade")
+    message.opacity = 1
+    CATransaction.commit()
+
+    messageCount += 1
+    let count = messageCount
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.messageSeconds) { [weak self] in
+      guard let self, count == self.messageCount else { return }
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      self.message.opacity = 0
+      CATransaction.commit()
+      let fadeOut = CABasicAnimation(keyPath: "opacity")
+      fadeOut.fromValue = 1
+      fadeOut.toValue = 0
+      fadeOut.duration = 0.5
+      self.message.add(fadeOut, forKey: "fade")
+    }
+  }
+
   /// Size of the screen in pixels, which photos are decoded against.
   static func pixelSize(of screen: NSScreen) -> CGSize {
     CGSize(
@@ -119,5 +199,16 @@ final class SlideshowWindow {
     CATransform3DConcat(
       CATransform3DMakeScale(frame.scale, frame.scale, 1),
       CATransform3DMakeTranslation(frame.offset.x, frame.offset.y, 0))
+  }
+}
+
+/// A borderless window can't become key by default, and then gets no key presses.
+private final class KeyWindow: NSWindow {
+  var onKey: ((NSEvent) -> Void)?
+
+  override var canBecomeKey: Bool { true }
+
+  override func keyDown(with event: NSEvent) {
+    onKey?(event)
   }
 }
