@@ -313,12 +313,16 @@ final class PaletteController {
   // MARK: Keys
 
   /// A key with ⌘ or ⌃ pressed while the palette is open, which the window routes here rather
-  /// than to the text field. The palette's own key closes it again; ⌘A, ⌘C, ⌘V and ⌘X edit
+  /// than to the text field. The palette's own key closes it again, but not as it repeats; ⌘A, ⌘C, ⌘V and ⌘X edit
   /// the filter, since the app has no Edit menu to send them; any other does nothing, so a
   /// slip doesn't end the slideshow.
   func handleShortcut(_ event: NSEvent) {
     guard let spec = KeySpec(event) else { return }
-    if keys.command(for: spec) == .palette { return actions.close() }
+    if keys.command(for: spec) == .palette {
+      // Holding the key that opened the palette would close it again with the first repeat.
+      if !event.isARepeat { actions.close() }
+      return
+    }
     guard spec.modifiers == .cmd, case .character(let character) = spec.key else { return }
     let edits: [Character: Selector] = [
       "a": #selector(NSText.selectAll(_:)), "c": #selector(NSText.copy(_:)),
