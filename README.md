@@ -64,7 +64,7 @@ location permission.
 
 **Edit Settings…** in the menu opens
 `~/Library/Application Support/photo-screensaver/config.json`. The app creates it on first launch
-and reloads it on save. Every key is required.
+and reloads it on save. Every key is required, and a key it doesn't know is an error.
 
 | Key | Meaning |
 |---|---|

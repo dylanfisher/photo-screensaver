@@ -152,8 +152,32 @@ extension Settings {
     } catch let error as DecodingError {
       throw SettingsError(description: describe(error))
     }
+    // Decoding ignores keys it doesn't read, and a write from the settings would drop them.
+    let unknown = keys(
+      in: try JSONSerialization.jsonObject(with: data),
+      notIn: try JSONSerialization.jsonObject(with: settings.encoded()))
+    if !unknown.isEmpty {
+      let names = unknown.map { "\"\($0.path.joined(separator: "."))\"" }
+      throw SettingsError(
+        description: "unknown key\(names.count == 1 ? "" : "s") \(names.joined(separator: ", "))")
+    }
     try settings.validate()
     return settings
+  }
+
+  /// The keys of JSON object `object` that `other` hasn't, with their values, and inside the
+  /// objects both have, theirs: the outermost key only, so an object `other` lacks is one key.
+  static func keys(in object: Any, notIn other: Any, path: [String] = [])
+    -> [(path: [String], value: Any)]
+  {
+    guard let object = object as? [String: Any], let other = other as? [String: Any] else {
+      return []
+    }
+    return object.keys.sorted().flatMap { key -> [(path: [String], value: Any)] in
+      guard let value = object[key] else { return [] }
+      guard let otherValue = other[key] else { return [(path + [key], value)] }
+      return keys(in: value, notIn: otherValue, path: path + [key])
+    }
   }
 
   public func encoded() throws -> Data {

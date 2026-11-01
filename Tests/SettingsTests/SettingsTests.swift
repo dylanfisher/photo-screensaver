@@ -20,6 +20,15 @@ final class SettingsTests: XCTestCase {
     assertFails(json, containing: "kenBurns")
   }
 
+  func testUnknownKeysFailWithTheirNames() throws {
+    var json = try starterJSON()
+    json["shuffle"] = true
+    var keys = try XCTUnwrap(json["keys"] as? [String: Any])
+    keys["zoom"] = "z"
+    json["keys"] = keys
+    assertFails(json, containing: "unknown keys \"keys.zoom\", \"shuffle\"")
+  }
+
   func testUnknownScalingFails() throws {
     var json = try starterJSON()
     json["scaling"] = "stretch"
