@@ -79,6 +79,7 @@ final class PhotoFeedTests: XCTestCase {
       XCTFail("expected an error")
     } catch let error as FeedError {
       XCTAssertTrue(error.description.contains("no photos"), error.description)
+      XCTAssertNil(error.emptyTimeframe)
     }
   }
 
@@ -105,6 +106,7 @@ final class PhotoFeedTests: XCTestCase {
       XCTFail("expected an error")
     } catch let error as FeedError {
       XCTAssertTrue(error.description.contains("no photos taken in \"2020\""), error.description)
+      XCTAssertEqual(error.emptyTimeframe, .year(2020))
     }
   }
 

@@ -445,7 +445,15 @@ final class AppController: NSObject, NSApplicationDelegate {
             continue
           } catch {
             if Task.isCancelled { return }
-            errors["photos"] = "Photos: \(error)"
+            let message = "Photos: \(error)"
+            // A timeframe edited by hand that has no photos says so on screen too, as the
+            // picker does, once rather than at every slide it keeps failing.
+            if let timeframe = (error as? FeedError)?.emptyTimeframe,
+              errors["photos"] != message
+            {
+              window.showMessage(PaletteController.noPhotos(in: timeframe))
+            }
+            errors["photos"] = message
           }
         } else {
           errors["photos"] = "No photos to show yet; waiting for the library scan"

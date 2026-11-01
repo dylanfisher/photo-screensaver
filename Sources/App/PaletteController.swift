@@ -185,7 +185,7 @@ final class PaletteController {
   /// Applies `timeframe` unless it would show nothing.
   private func apply(_ timeframe: Timeframe, count: Int) {
     guard count > 0 else {
-      return view.setFooter(timeframeFooter("No photos taken in \(timeframe.title)"))
+      return view.setFooter(timeframeFooter(Self.noPhotos(in: timeframe)))
     }
     actions.apply(timeframe, count)
   }
@@ -251,6 +251,11 @@ final class PaletteController {
 
   private func rangeFooter() -> String {
     timeframeFooter("←→ month · ⇧←→ year · ↩ to show · esc to go back")
+  }
+
+  /// Said when `timeframe` has no photos, here and on the slideshow.
+  static func noPhotos(in timeframe: Timeframe) -> String {
+    "No photos taken in \(timeframe.title)"
   }
 
   /// Like "3,812 photos".

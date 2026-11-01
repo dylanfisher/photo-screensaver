@@ -15,6 +15,8 @@ public struct Photo {
 
 public struct FeedError: Error, CustomStringConvertible {
   public let description: String
+  /// Set when the error is that the timeframe in the settings has no photos.
+  public var emptyTimeframe: Timeframe?
 }
 
 /// Hands out decoded photos in shuffled order, keeping up to `preloadCount` decoded ahead. One
@@ -228,7 +230,9 @@ public actor PhotoFeed {
         readIDs = true
         guard !passIDs.isEmpty else {
           let timeframe = filter == nil ? "" : " taken in \"\(settings.timeframe.title)\""
-          throw FeedError(description: "no photos\(timeframe) in \(root.path)")
+          throw FeedError(
+            description: "no photos\(timeframe) in \(root.path)",
+            emptyTimeframe: filter == nil ? nil : settings.timeframe)
         }
       }
       pending = passIDs.shuffled()
