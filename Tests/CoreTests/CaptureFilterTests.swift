@@ -45,17 +45,24 @@ final class CaptureFilterTests: XCTestCase {
       .daysOfYear(first: "12-30", last: "01-05"))
   }
 
-  func testOnThisDayCountsFebruary29InEveryYear() {
-    // 2026 has no Feb 29, but photos from leap years taken on it are in the window.
-    XCTAssertEqual(
-      CaptureFilter(.onThisDay, today: day(2026, 2, 28), calendar: utc),
-      .daysOfYear(first: "02-25", last: "03-02"))
+  func testOnThisDayCountsRealDaysInThisYear() {
+    // 2026 has no Feb 29: three days before Mar 1 is Feb 26, and three after Feb 28 is Mar 3.
     XCTAssertEqual(
       CaptureFilter(.onThisDay, today: day(2026, 3, 1), calendar: utc),
-      .daysOfYear(first: "02-27", last: "03-04"))
+      .daysOfYear(first: "02-26", last: "03-04"))
+    XCTAssertEqual(
+      CaptureFilter(.onThisDay, today: day(2026, 2, 28), calendar: utc),
+      .daysOfYear(first: "02-25", last: "03-03"))
     XCTAssertEqual(
       CaptureFilter(.onThisDay, today: day(2028, 2, 29), calendar: utc),
       .daysOfYear(first: "02-26", last: "03-03"))
+    XCTAssertEqual(
+      CaptureFilter(.onThisDay, today: day(2028, 3, 1), calendar: utc),
+      .daysOfYear(first: "02-27", last: "03-04"))
+    // A window that stops at Feb 28 leaves Feb 29 out.
+    XCTAssertEqual(
+      CaptureFilter(.onThisDay, today: day(2026, 2, 25), calendar: utc),
+      .daysOfYear(first: "02-22", last: "02-28"))
   }
 
   func testTodayIsTheCalendarsDay() throws {

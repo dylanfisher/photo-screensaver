@@ -68,10 +68,11 @@ range from January to December; there's no separate kind for it.
 
 **Relative kinds follow the calendar.** The feed works the filter out from today's date, in the
 Mac's time zone, each time it has shown every photo; nothing is frozen when it's chosen. "On this
-day" is three days either side of today's month and day, in any year. The days are counted in a
-leap year, so Feb 29 photos are in the window around Feb 28 and Mar 1 every year, and a window
-near New Year wraps (Dec 30 is Dec 27 to Jan 2). "Last N months" runs from today's date N months
-ago through the end of today.
+day" is the seven days from three before today to three after, counted in this year's
+calendar, as month and day in any year: Mar 1 2026 is Feb 26 to Mar 4. The days are compared as
+`MM-DD` text, so a window that crosses from Feb 28 to Mar 1 also takes in Feb 29 photos from leap
+years, every year, and one that stops at Feb 28 doesn't. A window near New Year wraps (Dec 30 is
+Dec 27 to Jan 2). "Last N months" runs from today's date N months ago through the end of today.
 
 **Ranges use the index; "on this day" reads it all.** A range compares whole `taken_at` text, so
 `2014-01 ≤ taken_at < 2015-01` is an index search. "On this day" compares `substr(taken_at, 6,
@@ -116,6 +117,9 @@ without a capture date show only under `all` (ADR 0005).
   about 45 ms here, and one callback keeps the list from reshuffling.
 - **Leaving out "on this day" photos from Feb 29 except in leap years** — rejected: they'd
   never show three years in four.
+- **Counting the days in a fixed leap year** — tried first: it made Feb 29 a day of every year,
+  so in other years the window around Mar 1 began a day late and the one around Feb 28 ended a
+  day early.
 
 ## Consequences
 

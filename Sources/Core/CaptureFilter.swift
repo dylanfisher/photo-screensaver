@@ -18,8 +18,7 @@ public enum CaptureFilter: Equatable, Sendable {
     case .all:
       return nil
     case .onThisDay:
-      let (_, month, day) = Self.parts(of: today, in: calendar)
-      self = Self.daysAround(month: month, day: day, spread: Timeframe.onThisDayDays)
+      self = Self.daysAround(today, spread: Timeframe.onThisDayDays, calendar: calendar)
     case .lastMonths(let months):
       guard let start = calendar.date(byAdding: .month, value: -months, to: today),
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)
@@ -34,15 +33,12 @@ public enum CaptureFilter: Equatable, Sendable {
     }
   }
 
-  /// The days `spread` either side of `month`/`day`, counted in a leap year, so Feb 29 is in
-  /// the window around Feb 28 and Mar 1 of every year, and a Feb 29 today has its own window.
-  static func daysAround(month: Int, day: Int, spread: Int) -> CaptureFilter {
-    var calendar = Calendar(identifier: .gregorian)
-    guard let utc = TimeZone(secondsFromGMT: 0) else { preconditionFailure("GMT exists") }
-    calendar.timeZone = utc
-    guard let date = calendar.date(from: DateComponents(year: 2000, month: month, day: day)),
-      let first = calendar.date(byAdding: .day, value: -spread, to: date),
-      let last = calendar.date(byAdding: .day, value: spread, to: date)
+  /// The days `spread` either side of `today` in this year's calendar, as `MM-DD`. A window
+  /// that crosses from Feb 28 to Mar 1 also takes in photos from Feb 29 of leap years, since
+  /// `02-29` sorts between the two; one that only reaches Feb 28 doesn't.
+  static func daysAround(_ today: Date, spread: Int, calendar: Calendar) -> CaptureFilter {
+    guard let first = calendar.date(byAdding: .day, value: -spread, to: today),
+      let last = calendar.date(byAdding: .day, value: spread, to: today)
     else { preconditionFailure("days around a date are dates") }
     func monthDay(_ date: Date) -> String {
       let (_, month, day) = parts(of: date, in: calendar)
