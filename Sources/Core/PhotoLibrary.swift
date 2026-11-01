@@ -59,8 +59,9 @@ public final class PhotoLibrary {
     -- The library folder the photos belong to, as one row. Another folder discards them.
     CREATE TABLE library (root TEXT NOT NULL);
     CREATE TABLE photos (
-      -- A changed file is replaced by a new row, so IDs only grow within a scan.
-      id INTEGER PRIMARY KEY,
+      -- A changed file is replaced by a new row. AUTOINCREMENT, so an ID is never used again:
+      -- the feed and the slide history hold IDs, and a reused one would be another photo.
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       -- Relative to the library folder.
       path TEXT NOT NULL UNIQUE,
       size INTEGER NOT NULL,

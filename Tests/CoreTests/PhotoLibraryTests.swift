@@ -88,6 +88,24 @@ final class PhotoLibraryTests: XCTestCase {
     XCTAssertEqual(try PhotoLibrary(at: library.database).yearCounts(), [2019: 1, 2020: 2])
   }
 
+  func testARemovedPhotosIDIsNotUsedAgain() throws {
+    try library.jpeg("a.jpg")
+    try library.scan()
+    let first = try library.open().photoIDs()
+    let gone = try library.jpeg("b.jpg")
+    try library.scan()
+    let removedID = try XCTUnwrap(Set(try library.open().photoIDs()).subtracting(first).first)
+    try FileManager.default.removeItem(at: gone)
+    try library.scan()
+    try library.jpeg("c.jpg")
+    try library.scan()
+    let database = try library.open()
+    XCTAssertNil(try database.photo(removedID))
+    XCTAssertEqual(
+      try database.photoIDs().compactMap { try database.photo($0)?.path }.sorted(),
+      ["a.jpg", "c.jpg"])
+  }
+
   func testAMissingIDHasNoPhoto() throws {
     XCTAssertNil(try library.open().photo(42))
   }

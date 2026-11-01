@@ -21,7 +21,9 @@ folder discards the photos. The `CREATE` SQL is the schema's identity, as in mus
 0008: a stored text that differs from the build's drops every table and rebuilds, and the next
 scan refills it. No version numbers or migrations before the first release. A file SQLite can't
 read is deleted and started anew. The wrapper (`SQLiteDatabase`) links the system libsqlite3
-and uses nothing newer than 3.36, the version macOS 12 ships.
+and uses nothing newer than 3.36, the version macOS 12 ships. Row IDs are `AUTOINCREMENT`, so a
+removed photo's ID never comes back as another photo: the feed and the slide history (ADR 0006)
+hold IDs.
 
 **Capture date as text.** `taken_at` is EXIF DateTimeOriginal as `YYYY-MM-DD HH:MM:SS`, with
 OffsetTimeOriginal in `taken_offset` when the camera recorded one. That is the camera's clock in
