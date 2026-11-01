@@ -96,6 +96,10 @@ final class AppController: NSObject, NSApplicationDelegate {
       userInfo: nil, repeats: true)
   }
 
+  func applicationWillTerminate(_ notification: Notification) {
+    settingsWindow.saveEdits()
+  }
+
   @objc private func tick() {
     reloadSettingsIfChanged()
     checkOffHours()
@@ -289,7 +293,10 @@ final class AppController: NSObject, NSApplicationDelegate {
       countingPointer: presence.idleCheckCountsPointer(paletteOpen: palette != nil))
     switch presence {
     case .desktop:
-      if let settings, feed != nil, !wasOffHours, idle >= settings.idleMinutes * 60 {
+      // An open settings window means the user is changing them; the slideshow would cover it.
+      if let settings, feed != nil, !wasOffHours, !settingsWindow.isVisible,
+        idle >= settings.idleMinutes * 60
+      {
         send(.userIdle)
       }
     case .showing, .displayOff:

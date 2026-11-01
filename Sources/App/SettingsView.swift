@@ -378,13 +378,16 @@ private struct SettingRow<Control: View>: View {
 }
 
 /// A text field that saves what was typed on Return or when it loses focus, rather than at
-/// each keystroke, which would save "0" on the way to "09:00". It shows the file's value again
-/// whenever that changes.
+/// each keystroke, which would save "0" on the way to "09:00". After saving, and whenever the
+/// file's value changes, it shows the file's value, so text the file refused or wrote another way
+/// ("05" for 5) doesn't stay looking saved.
 private struct CommitField: View {
   let value: String
   let width: CGFloat
   let commit: (String) -> Void
 
+  @EnvironmentObject private var edits: PendingEdits
+  @State private var id = UUID()
   @State private var draft = ""
   @FocusState private var focused: Bool
 
@@ -394,11 +397,48 @@ private struct CommitField: View {
       .multilineTextAlignment(.trailing)
       .frame(width: width)
       .focused($focused)
-      .onSubmit { commit(draft) }
+      .onSubmit(save)
       .onChange(of: focused) { isFocused in
-        if !isFocused, draft != value { commit(draft) }
+        if !isFocused { save() }
+      }
+      .onChange(of: draft) { text in
+        if text == value {
+          edits.remove(id)
+        } else {
+          edits.set(id) { commit(text) }
+        }
       }
       .onChange(of: value) { draft = $0 }
       .onAppear { draft = value }
+  }
+
+  private func save() {
+    edits.remove(id)
+    guard draft != value else { return }
+    commit(draft)
+    // A change the file took arrives as a new `value` too.
+    draft = value
+  }
+}
+
+/// What's typed in the settings window's fields and not yet saved. A field saves as it loses
+/// focus, but SwiftUI reports that only after the window has closed, so closing the window or
+/// quitting saves these first.
+@MainActor
+final class PendingEdits: ObservableObject {
+  private var saves: [UUID: () -> Void] = [:]
+
+  func set(_ id: UUID, save: @escaping () -> Void) {
+    saves[id] = save
+  }
+
+  func remove(_ id: UUID) {
+    saves[id] = nil
+  }
+
+  func save() {
+    let pending = saves
+    saves = [:]
+    for save in pending.values { save() }
   }
 }

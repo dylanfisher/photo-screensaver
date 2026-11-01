@@ -323,11 +323,6 @@ final class PaletteController {
       if !event.isARepeat { actions.close() }
       return
     }
-    guard spec.modifiers == .cmd, case .character(let character) = spec.key else { return }
-    let edits: [Character: Selector] = [
-      "a": #selector(NSText.selectAll(_:)), "c": #selector(NSText.copy(_:)),
-      "v": #selector(NSText.paste(_:)), "x": #selector(NSText.cut(_:)),
-    ]
-    if let action = edits[character] { NSApp.sendAction(action, to: nil, from: nil) }
+    if let action = event.editAction { NSApp.sendAction(action, to: nil, from: nil) }
   }
 }
