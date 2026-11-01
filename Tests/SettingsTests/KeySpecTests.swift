@@ -56,6 +56,18 @@ final class KeySpecTests: XCTestCase {
     XCTAssertEqual(KeySpec.Key(keyCode: 82), .character("0"))
     XCTAssertEqual(KeySpec.Key(keyCode: 92), .character("9"))
     XCTAssertEqual(KeySpec.Key(keyCode: 76), .named(.return))
+    XCTAssertEqual(KeySpec.Key(keyCode: 69), .named(.plus))
+  }
+
+  func testPlusAndForwardDeleteAreNamedKeys() throws {
+    XCTAssertEqual(try KeySpec(parsing: "cmd+plus"), KeySpec(.named(.plus), modifiers: .cmd))
+    XCTAssertEqual(KeySpec(.named(.plus), modifiers: .cmd).description, "cmd+plus")
+    XCTAssertEqual(try KeySpec(parsing: "ForwardDelete"), KeySpec(.named(.forwardDelete)))
+    XCTAssertEqual(KeySpec(.named(.forwardDelete)).description, "forwarddelete")
+    XCTAssertEqual(KeySpec.Key(keyCode: 117), .named(.forwardDelete))
+    XCTAssertThrowsError(try KeySpec(parsing: "cmd++")) { error in
+      XCTAssertTrue("\(error)".contains("\"plus\""), "\(error)")
+    }
   }
 
   func testEveryCharacterKeyParsesBack() throws {

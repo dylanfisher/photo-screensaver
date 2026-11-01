@@ -9,6 +9,10 @@ public struct KeySpec: Hashable, Codable, CustomStringConvertible {
   public enum Name: String, CaseIterable {
     case left, right, up, down, space, tab, escape, delete
     case `return`
+    /// The keypad's +, since `+` joins modifiers. The + over = is `shift+=`.
+    case plus
+    /// The ⌦ key, on extended keyboards and as fn+delete.
+    case forwardDelete = "forwarddelete"
   }
 
   public enum Key: Hashable {
@@ -29,7 +33,7 @@ public struct KeySpec: Hashable, Codable, CustomStringConvertible {
       var keys: [UInt16: Key] = [
         123: .named(.left), 124: .named(.right), 125: .named(.down), 126: .named(.up),
         49: .named(.space), 48: .named(.tab), 53: .named(.escape), 51: .named(.delete),
-        36: .named(.return), 76: .named(.return),
+        36: .named(.return), 76: .named(.return), 69: .named(.plus), 117: .named(.forwardDelete),
       ]
       // The US ANSI layout, as `kVK_ANSI_*` in `Events.h`.
       let characters: [(UInt16, Character)] = [
@@ -82,7 +86,9 @@ public struct KeySpec: Hashable, Codable, CustomStringConvertible {
     let parts = text.lowercased().split(separator: "+", omittingEmptySubsequences: false)
     guard let last = parts.last, !last.isEmpty, parts.dropLast().allSatisfy({ !$0.isEmpty })
     else {
-      throw SettingsError(description: "\"\(text)\" isn't a key like \"right\", \"1\" or \"cmd+k\"")
+      throw SettingsError(
+        description:
+          "\"\(text)\" isn't a key like \"right\", \"1\" or \"cmd+k\"; the keypad's + is \"plus\"")
     }
     var modifiers: Modifiers = []
     for part in parts.dropLast() {
