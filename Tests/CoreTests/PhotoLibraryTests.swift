@@ -1,5 +1,6 @@
 import Core
 import Primitives
+import Settings
 import XCTest
 
 final class PhotoLibraryTests: XCTestCase {
