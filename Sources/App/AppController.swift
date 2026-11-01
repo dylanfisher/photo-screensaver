@@ -392,7 +392,8 @@ final class AppController: NSObject, NSApplicationDelegate {
       keepAwake(display: false)
     case .resumeSlideshow:
       keepAwake(display: true)
-      startSlides()
+      // The photo from before the display slept is still in the window: it gets a whole slide.
+      runSlides()
     case .sleepDisplay:
       record("display sleep") { try power.sleepDisplay() }
     case .wakeDisplay:
@@ -408,7 +409,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     record("system power") { try power.keepSystemAwake(checkingMotion) }
   }
 
-  /// Moves on from the photo shown before, as when the slideshow starts or the display wakes.
+  /// Moves on from the photo shown before, as when the slideshow starts.
   private func startSlides() {
     history.forward()
     runSlides()
