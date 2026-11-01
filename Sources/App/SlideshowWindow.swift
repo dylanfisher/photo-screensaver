@@ -159,11 +159,12 @@ final class SlideshowWindow {
   /// Restarts the current photo's pan from where it is, to last a slide of the new length and
   /// its fade, so it doesn't stop partway through a longer slide.
   func retime(settings: Settings) {
-    guard let layer = current, let pan = layer.animation(forKey: "kenBurns") as? CABasicAnimation,
-      let now = layer.presentation()?.transform
+    guard let layer = current, let pan = layer.animation(forKey: "kenBurns") as? CABasicAnimation
     else { return }
     let retimed = CABasicAnimation(keyPath: "transform")
-    retimed.fromValue = now
+    // A photo not drawn yet has no presentation layer, and is still where its pan starts. The
+    // model layer's transform is where the pan ends.
+    retimed.fromValue = layer.presentation()?.transform ?? pan.fromValue
     retimed.toValue = pan.toValue
     retimed.duration = settings.slideSeconds + settings.transitionSeconds
     retimed.timingFunction = CAMediaTimingFunction(name: .linear)
