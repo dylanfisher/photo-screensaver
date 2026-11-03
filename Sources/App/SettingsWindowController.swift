@@ -3,15 +3,19 @@ import Core
 import Settings
 import SwiftUI
 
-/// The settings window: `SettingsView` in an ordinary titled window. The app is menu-bar only,
-/// so showing the window activates the app, and closing it gives the keys back to the app that
-/// had them (docs/decisions/0009-settings-window.md).
+/// The settings window: a toolbar of panes, each a `SettingsView`, in an ordinary titled window.
+/// The app is menu-bar only, so showing the window activates the app, and closing it gives the
+/// keys back to the app that had them (docs/decisions/0009-settings-window.md,
+/// docs/decisions/0012-settings-panes.md).
 @MainActor
-final class SettingsWindowController: NSObject, NSWindowDelegate {
+final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate {
   private let model: SettingsModel
   private let actions: SettingsView.Actions
   /// Built when the window is shown and let go when it closes, with its form.
   private var window: SettingsWindow?
+  private var hosting: NSHostingController<SettingsView>?
+  /// The pane showing, or shown last; the window opens at it again.
+  private var pane = SettingsView.Pane.general
   /// What's typed in the window's fields and not yet saved.
   private var edits: PendingEdits?
   /// The app that had the keys when the window opened, which gets them back when it closes.
@@ -51,19 +55,75 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
   private func makeWindow() -> SettingsWindow {
     // macOS 12's hosting controller sizes the window to the view's ideal size.
     let edits = PendingEdits()
-    let hosting = NSHostingController(
-      rootView: SettingsView(model: model, actions: actions).environmentObject(edits))
+    let hosting = NSHostingController(rootView: view(of: pane, edits: edits))
     let window = SettingsWindow(contentViewController: hosting)
-    window.styleMask = [.titled, .closable, .resizable]
-    window.title = "Photo Screensaver Settings"
+    window.styleMask = [.titled, .closable]
+    window.title = pane.title
+    let toolbar = NSToolbar(identifier: "SettingsToolbar")
+    toolbar.delegate = self
+    toolbar.displayMode = .iconAndLabel
+    window.toolbar = toolbar
+    window.toolbarStyle = .preference
+    toolbar.selectedItemIdentifier = NSToolbarItem.Identifier(pane.rawValue)
     window.collectionBehavior = [.moveToActiveSpace, .fullScreenNone]
     window.isReleasedWhenClosed = false
     window.delegate = self
     window.onRecordingKey = { [model] event in model.record(KeySpec(event)) }
     window.center()
     self.window = window
+    self.hosting = hosting
     self.edits = edits
     return window
+  }
+
+  private func view(of pane: SettingsView.Pane, edits: PendingEdits) -> SettingsView {
+    SettingsView(model: model, actions: actions, edits: edits, pane: pane)
+  }
+
+  /// Shows `pane`, keeping the window's top edge where it is as its height changes.
+  private func select(_ pane: SettingsView.Pane) {
+    guard let window, let hosting, let edits, pane != self.pane else { return }
+    // The pane's fields go away without losing focus first.
+    edits.save()
+    model.stopRecording()
+    self.pane = pane
+    hosting.rootView = view(of: pane, edits: edits)
+    window.title = pane.title
+    let size = hosting.view.fittingSize
+    var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+    frame.origin = NSPoint(
+      x: window.frame.minX, y: window.frame.maxY - frame.height)
+    window.setFrame(frame, display: true, animate: true)
+  }
+
+  @objc private func selected(_ item: NSToolbarItem) {
+    guard let pane = SettingsView.Pane(rawValue: item.itemIdentifier.rawValue) else { return }
+    select(pane)
+  }
+
+  func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    SettingsView.Pane.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
+  }
+
+  func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    toolbarAllowedItemIdentifiers(toolbar)
+  }
+
+  func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    toolbarAllowedItemIdentifiers(toolbar)
+  }
+
+  func toolbar(
+    _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+    willBeInsertedIntoToolbar flag: Bool
+  ) -> NSToolbarItem? {
+    guard let pane = SettingsView.Pane(rawValue: identifier.rawValue) else { return nil }
+    let item = NSToolbarItem(itemIdentifier: identifier)
+    item.label = pane.title
+    item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.title)
+    item.target = self
+    item.action = #selector(selected(_:))
+    return item
   }
 
   func windowWillClose(_ notification: Notification) {
@@ -71,6 +131,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     // The fields save as they lose focus, which SwiftUI reports after the window is gone.
     edits?.save()
     edits = nil
+    hosting = nil
     window = nil
     let frontmost = NSWorkspace.shared.frontmostApplication
     // The user may have switched apps with the window open; closing it mustn't pull them back.

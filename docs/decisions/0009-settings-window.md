@@ -2,6 +2,7 @@
 
 - **Date:** 2026-11-01
 - **Status:** accepted
+- **Amended by:** [0012](0012-settings-panes.md): toolbar panes and right-aligned labels.
 
 ## Context
 
