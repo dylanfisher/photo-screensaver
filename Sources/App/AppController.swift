@@ -91,7 +91,14 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    record("settings") { try Settings.createIfMissing() }
+    record("settings") {
+      try Settings.createIfMissing()
+      let added = try Settings.addMissingKeys()
+      if !added.isEmpty {
+        log.notice(
+          "added to config.json with defaults: \(added.joined(separator: ", "), privacy: .public)")
+      }
+    }
     reloadSettingsIfChanged()
     Timer.scheduledTimer(
       timeInterval: 1, target: self, selector: #selector(tick), userInfo: nil, repeats: true)

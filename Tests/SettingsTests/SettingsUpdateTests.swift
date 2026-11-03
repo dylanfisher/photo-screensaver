@@ -119,6 +119,56 @@ final class SettingsUpdateTests: XCTestCase {
     XCTAssertEqual(try Settings.load(at: url).slideSeconds, 30)
   }
 
+  func testAddsMissingKeysWithTheStartersValues() throws {
+    var json = try starterJSON()
+    json["battery"] = nil
+    json["slideSeconds"] = 30
+    var motion = try XCTUnwrap(json["motion"] as? [String: Any])
+    motion["sampleSeconds"] = nil
+    json["motion"] = motion
+    try JSONSerialization.data(withJSONObject: json).write(to: url)
+
+    XCTAssertEqual(try Settings.addMissingKeys(at: url), ["battery", "motion.sampleSeconds"])
+
+    var expected = Settings.starter
+    expected.slideSeconds = 30
+    XCTAssertEqual(try Data(contentsOf: url), try expected.encoded())
+  }
+
+  func testAFileWithEveryKeyIsNotWritten() throws {
+    let compact = try JSONSerialization.data(withJSONObject: starterJSON())
+    try compact.write(to: url)
+
+    XCTAssertEqual(try Settings.addMissingKeys(at: url), [])
+    XCTAssertEqual(try Data(contentsOf: url), compact)
+  }
+
+  func testMissingKeysAreNotAddedBesideAnUnknownOne() throws {
+    var json = try starterJSON()
+    json["kenburns"] = json.removeValue(forKey: "kenBurns")
+    let misspelled = try JSONSerialization.data(withJSONObject: json)
+    try misspelled.write(to: url)
+
+    XCTAssertEqual(try Settings.addMissingKeys(at: url), [])
+    XCTAssertEqual(try Data(contentsOf: url), misspelled)
+  }
+
+  func testMissingKeysAreNotAddedToAnInvalidFile() throws {
+    var json = try starterJSON()
+    json["battery"] = nil
+    json["slideSeconds"] = -1
+    let invalid = try JSONSerialization.data(withJSONObject: json)
+    try invalid.write(to: url)
+
+    XCTAssertEqual(try Settings.addMissingKeys(at: url), [])
+    XCTAssertEqual(try Data(contentsOf: url), invalid)
+  }
+
+  private func starterJSON() throws -> [String: Any] {
+    try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Settings.starter.encoded()) as? [String: Any])
+  }
+
   private func modificationDate() throws -> Date? {
     try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
   }

@@ -93,7 +93,8 @@ against a temporary file. The view and the window are in App.
 - **Editing the file's text one key at a time, as simple-spotlight does** — rejected: its file
   has comments to keep, this one has none, and the app already writes it whole.
 - **A button that fills in missing keys with defaults**, decoding the file leniently against
-  `Settings.starter` — rejected as a compatibility shim; see above.
+  `Settings.starter` — rejected as a compatibility shim; see above. Superseded by
+  `0011-add-missing-settings.md`, which adds them at launch.
 - **Ignoring unknown keys and keeping them on write**, by merging the encoding into the file's
   JSON — rejected: a misspelled key that is ignored is the silent failure every other key in
   the file already avoids.

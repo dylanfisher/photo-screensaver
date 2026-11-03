@@ -36,6 +36,60 @@ extension Settings {
         "config.json changed while it was being saved, \(updateAttempts) times; try again")
   }
 
+  /// Adds the keys `starter` has and the config file leaves out, with `starter`'s values, so a
+  /// build that adds a setting runs with the file an older one wrote, and returns their paths,
+  /// like `"battery.mode"`. Only when the file is a JSON object and the keys make it valid
+  /// settings: a file with an unknown key or any other error stays as it is, for the load to
+  /// report (docs/decisions/0011-add-missing-settings.md). Writes as `update` does. Only at
+  /// launch, like `createIfMissing`: new keys come with a new build, and during a reload a key
+  /// that's gone is more likely an edit under way.
+  @discardableResult
+  public static func addMissingKeys(at url: URL = fileURL) throws -> [String] {
+    let destination = url.resolvingSymlinksInPath()
+    let defaults = try JSONSerialization.jsonObject(with: starter.encoded())
+    for _ in 0..<updateAttempts {
+      let found = try contents(of: destination)
+      // Text that isn't a JSON object has no keys to add to; the load says what's wrong.
+      guard let file = try? JSONSerialization.jsonObject(with: found) as? [String: Any] else {
+        return []
+      }
+      let missing = keys(in: defaults, notIn: file)
+      guard !missing.isEmpty else { return [] }
+      var filled = file
+      for key in missing { set(key.value, at: key.path[...], in: &filled) }
+      let settings: Settings
+      do {
+        settings = try decode(JSONSerialization.data(withJSONObject: filled))
+      } catch {
+        // The load that follows reads the file as it is and reports this error, with the
+        // missing keys.
+        return []
+      }
+      if try replace(destination, holding: found, with: settings.encoded()) {
+        return missing.map { $0.path.joined(separator: ".") }
+      }
+    }
+    throw SettingsError(
+      description:
+        "config.json changed while missing keys were being added, \(updateAttempts) times")
+  }
+
+  /// Sets `value` at `path` in `object`, inside the objects along it, which `keys(in:notIn:)`
+  /// only names when they exist.
+  private static func set(_ value: Any, at path: ArraySlice<String>, in object: inout [String: Any])
+  {
+    guard let key = path.first else { preconditionFailure("a key's path is never empty") }
+    guard path.count > 1 else {
+      object[key] = value
+      return
+    }
+    guard var inner = object[key] as? [String: Any] else {
+      preconditionFailure("keys(in:notIn:) names keys inside objects both files have")
+    }
+    set(value, at: path.dropFirst(), in: &inner)
+    object[key] = inner
+  }
+
   /// The file's bytes, or an error that says in words why they couldn't be read.
   private static func contents(of url: URL) throws -> Data {
     do {
