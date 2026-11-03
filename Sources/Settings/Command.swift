@@ -7,6 +7,8 @@ public enum Command: String, CaseIterable, CodingKey {
   case pause
   /// Shows or hides the photo info panel.
   case info
+  /// Hides the photo info panel if it's open, so its key never ends the slideshow by mistake.
+  case hideInfo
   /// Opens the timeframe picker, to choose which photos show by when they were taken.
   case timeframe
   case speed1, speed2, speed3, speed4, speed5
@@ -24,6 +26,7 @@ public enum Command: String, CaseIterable, CodingKey {
     case .previous: return "Previous Photo"
     case .pause: return "Pause or Resume"
     case .info: return "Show Photo Info"
+    case .hideInfo: return "Hide Photo Info"
     case .timeframe: return "Choose Timeframe…"
     case .speed1, .speed2, .speed3, .speed4, .speed5:
       guard let seconds = slideSeconds else {
@@ -43,6 +46,7 @@ public enum Command: String, CaseIterable, CodingKey {
     case .previous: return KeySpec(.named(.left))
     case .pause: return KeySpec(.named(.space))
     case .info: return KeySpec(.named(.up))
+    case .hideInfo: return KeySpec(.named(.down))
     case .timeframe: return KeySpec(.character("t"))
     case .speed1: return KeySpec(.character("1"))
     case .speed2: return KeySpec(.character("2"))
@@ -66,7 +70,8 @@ public enum Command: String, CaseIterable, CodingKey {
     case .speed3: return 30
     case .speed4: return 60
     case .speed5: return 300
-    case .next, .previous, .pause, .info, .timeframe, .rescan, .settings, .palette: return nil
+    case .next, .previous, .pause, .info, .hideInfo, .timeframe, .rescan, .settings, .palette:
+      return nil
     }
   }
 
@@ -75,8 +80,8 @@ public enum Command: String, CaseIterable, CodingKey {
   public var repeats: Bool {
     switch self {
     case .next, .previous: return true
-    case .pause, .info, .timeframe, .speed1, .speed2, .speed3, .speed4, .speed5, .rescan, .settings,
-      .palette:
+    case .pause, .info, .hideInfo, .timeframe, .speed1, .speed2, .speed3, .speed4, .speed5, .rescan,
+      .settings, .palette:
       return false
     }
   }

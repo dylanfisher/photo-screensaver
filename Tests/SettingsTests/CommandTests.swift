@@ -28,6 +28,7 @@ final class CommandTests: XCTestCase {
     XCTAssertEqual(Command.next.defaultKey.description, "right")
     XCTAssertEqual(Command.previous.defaultKey.description, "left")
     XCTAssertEqual(Command.info.defaultKey.description, "up")
+    XCTAssertEqual(Command.hideInfo.defaultKey.description, "down")
     XCTAssertEqual(Command.speed3.defaultKey.description, "3")
     XCTAssertEqual(Command.pause.defaultKey.description, "space")
     XCTAssertEqual(Command.timeframe.defaultKey.description, "t")

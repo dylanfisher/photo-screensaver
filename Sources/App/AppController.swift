@@ -527,14 +527,14 @@ final class AppController: NSObject, NSApplicationDelegate {
       guard history.back() else { return }
       runSlides()
     case .info:
-      infoOpen.toggle()
       if infoOpen {
-        updateInfo()
+        closeInfo()
       } else {
-        infoTask?.cancel()
-        infoTask = nil
-        window?.hideInfo()
+        infoOpen = true
+        updateInfo()
       }
+    case .hideInfo:
+      if infoOpen { closeInfo() }
     case .speed1, .speed2, .speed3, .speed4, .speed5:
       guard let seconds = command.slideSeconds else {
         preconditionFailure("every speed command sets slideSeconds")
@@ -597,6 +597,13 @@ final class AppController: NSObject, NSApplicationDelegate {
     // Moving the mouse to use the palette doesn't end the slideshow once it closes.
     enteredAt = ProcessInfo.processInfo.systemUptime
     if resuming, !paused { runSlides() }
+  }
+
+  private func closeInfo() {
+    infoOpen = false
+    infoTask?.cancel()
+    infoTask = nil
+    window?.hideInfo()
   }
 
   /// Shows what's known about the photo on screen in the info panel, if it's open: at once from

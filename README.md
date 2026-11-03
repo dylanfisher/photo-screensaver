@@ -34,6 +34,7 @@ While the slideshow shows, these keys work, and each can be changed under `keys`
 | → | `next` | Shows the next photo. After going back, steps forward through those photos first. |
 | ← | `previous` | Goes back through the photos shown before. |
 | ↑ | `info` | Shows or hides the photo's details in the bottom-left corner: where and when it was taken, camera, lens, exposure, size, and its folder and file name. It stays open from photo to photo until pressed again. |
+| ↓ | `hideInfo` | Hides the photo's details if they show. It never ends the slideshow. |
 | Space | `pause` | Stops the slideshow on the photo it's on, or starts it again. Each slideshow starts playing. |
 | T | `timeframe` | Chooses which photos show by when they were taken (below). |
 | 1–5 | `speed1` … `speed5` | Shows each photo for 5 s, 15 s, 30 s, 1 min or 5 min, and saves that as `slideSeconds`. |
