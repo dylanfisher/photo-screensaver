@@ -61,6 +61,24 @@ public struct Settings: Codable, Equatable {
     }
   }
 
+  /// What the slideshow does while the Mac runs on battery power.
+  public struct Battery: Codable, Equatable {
+    public enum Mode: String, Codable {
+      /// As on power.
+      case always
+      /// Stops after `limitMinutes`, and doesn't start on its own again until someone has used
+      /// the Mac.
+      case limited
+      /// Doesn't start, even by hand, and stops when the power is unplugged.
+      case never
+    }
+
+    public var mode: Mode
+    /// Minutes the slideshow stays up on battery power, display off included, before it stops
+    /// and the display sleeps. Only for `limited`.
+    public var limitMinutes: Double
+  }
+
   /// The key for each command while the slideshow shows. Every command needs one, and no two
   /// can share a key.
   public struct Keys: Codable, Equatable {
@@ -110,6 +128,7 @@ public struct Settings: Codable, Equatable {
   public var preloadCount: Int
   public var motion: Motion
   public var offHours: OffHours
+  public var battery: Battery
   /// Which photos show, by when they were taken.
   public var timeframe: Timeframe
   public var keys: Keys
@@ -145,6 +164,7 @@ extension Settings {
       sampleSeconds: 4,
       useLightSensor: true, threshold: 0.2),
     offHours: OffHours(enabled: false, start: "00:00", end: "09:00"),
+    battery: Battery(mode: .limited, limitMinutes: 10),
     timeframe: .all,
     keys: Keys(\.defaultKey)
   )
@@ -267,6 +287,7 @@ extension Settings {
         motion.checkEveryMinutes * 60
       ),
       ("motion.sampleSeconds", motion.sampleSeconds, 60),
+      ("battery.limitMinutes", battery.limitMinutes, 24 * 60),
     ]
     for (key, value, max) in ranges where !(value > 0 && value <= max) {
       throw SettingsError(

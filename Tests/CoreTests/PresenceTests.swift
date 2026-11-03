@@ -67,6 +67,16 @@ final class PresenceTests: XCTestCase {
     XCTAssertEqual(Presence.desktop.handle(.offHoursBegan).1, [])
   }
 
+  func testBatteryLimitEndsTheSlideshowAndSleepsTheDisplay() {
+    XCTAssertEqual(
+      Presence.showing(emptyChecks: 0).handle(.batteryLimitReached).1,
+      [.stopSlideshow, .sleepDisplay])
+    let (state, effects) = Presence.displayOff(emptyChecks: 2).handle(.batteryLimitReached)
+    XCTAssertEqual(state, .desktop)
+    XCTAssertEqual(effects, [.stopSlideshow])
+    XCTAssertEqual(Presence.desktop.handle(.batteryLimitReached).1, [])
+  }
+
   func testLightChangesThatCallForACheckNow() {
     let on = 30 * 60.0
     XCTAssertTrue(

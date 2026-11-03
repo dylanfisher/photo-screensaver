@@ -179,6 +179,18 @@ final class SettingsTests: XCTestCase {
     assertFails(json, containing: "keys.previous")
   }
 
+  func testBatteryLimitMustBePositive() throws {
+    var json = try starterJSON()
+    json["battery"] = ["mode": "limited", "limitMinutes": 0]
+    assertFails(json, containing: "battery.limitMinutes")
+  }
+
+  func testUnknownBatteryModeFails() throws {
+    var json = try starterJSON()
+    json["battery"] = ["mode": "sometimes", "limitMinutes": 10]
+    assertFails(json, containing: "battery.mode")
+  }
+
   func testTwoCommandsOnOneKeyFail() throws {
     var json = try starterJSON()
     var keys = try XCTUnwrap(json["keys"] as? [String: Any])

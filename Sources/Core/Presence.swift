@@ -21,6 +21,8 @@ public enum Presence: Equatable {
     /// Motion mode was switched off in settings.
     case motionOff
     case offHoursBegan
+    /// The slideshow has been up on battery power as long as the settings allow.
+    case batteryLimitReached
   }
 
   public enum Effect: Equatable {
@@ -44,9 +46,9 @@ public enum Presence: Equatable {
     case (.showing, .userActive), (.displayOff, .userActive):
       // A key press or mouse move already wakes the display on its own.
       return (.desktop, [.stopSlideshow])
-    case (.showing, .offHoursBegan):
+    case (.showing, .offHoursBegan), (.showing, .batteryLimitReached):
       return (.desktop, [.stopSlideshow, .sleepDisplay])
-    case (.displayOff, .offHoursBegan):
+    case (.displayOff, .offHoursBegan), (.displayOff, .batteryLimitReached):
       return (.desktop, [.stopSlideshow])
     case (.showing(let empty), .noMotion) where empty + 1 >= Self.emptyChecksToSleep:
       return (.displayOff(emptyChecks: 0), [.pauseSlideshow, .sleepDisplay])

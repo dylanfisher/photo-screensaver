@@ -37,6 +37,7 @@ struct SettingsView: View {
           slideshow
           timeframe
           offHours
+          battery
           motion
           keys
         }
@@ -196,6 +197,24 @@ struct SettingsView: View {
       SettingRow("End", detail: "A start later than the end spans midnight.") {
         timeField(\.offHours.end)
       }
+    }
+  }
+
+  private var battery: some View {
+    SettingsSection("Battery") {
+      SettingRow("On battery", detail: "What the slideshow does without a power adapter.") {
+        Picker("On battery", selection: binding(\.battery.mode)) {
+          Text("Runs as on power").tag(Settings.Battery.Mode.always)
+          Text("Stops after a time").tag(Settings.Battery.Mode.limited)
+          Text("Doesn't run").tag(Settings.Battery.Mode.never)
+        }
+        .labelsHidden()
+        .frame(width: Self.pickerWidth)
+      }
+      SettingRow("Stop after", detail: "Then the display sleeps, and the Mac can too.") {
+        numberField(\.battery.limitMinutes, unit: "min")
+      }
+      .disabled(model.settings.battery.mode != .limited)
     }
   }
 

@@ -75,6 +75,9 @@ final class AppController: NSObject, NSApplicationDelegate {
   /// Whether it was off hours at the last tick, so a running slideshow is stopped once as they
   /// begin, and one started by hand during them keeps going.
   private var wasOffHours = false
+  /// As of the last tick.
+  private var onBattery = false
+  private var batteryWatch = BatteryWatch()
 
   /// Shown in the menu, one line each. Keyed so a later success clears only its own error.
   private var errors: [String: String] = [:] {
@@ -104,6 +107,7 @@ final class AppController: NSObject, NSApplicationDelegate {
   @objc private func tick() {
     reloadSettingsIfChanged()
     checkOffHours()
+    checkBattery()
     checkInput()
     checkLight()
     if case .showing = presence { window?.keepFront() }
@@ -154,6 +158,7 @@ final class AppController: NSObject, NSApplicationDelegate {
       window?.retime(settings: loaded)
       runSlides()
     }
+    if loaded.battery.mode != old?.battery.mode { updateMenu() }
     if loaded.motion != old?.motion {
       errors["motion"] = nil
       errors["light"] = nil
@@ -283,6 +288,20 @@ final class AppController: NSObject, NSApplicationDelegate {
     wasOffHours = offHours
   }
 
+  private func checkBattery() {
+    let wasOnBattery = onBattery
+    record("power") { onBattery = try PowerSource.onBattery() }
+    // Show Slideshow is only for some settings on battery.
+    if onBattery != wasOnBattery { updateMenu() }
+    guard let battery = settings?.battery else { return }
+    if batteryWatch.update(
+      onBattery: onBattery, showing: presence != .desktop,
+      at: ProcessInfo.processInfo.systemUptime, battery: battery)
+    {
+      send(.batteryLimitReached)
+    }
+  }
+
   private func checkInput() {
     if palette != nil,
       DisplayPower.secondsSinceUserInput(countingKeys: true, countingPointer: true)
@@ -295,8 +314,10 @@ final class AppController: NSObject, NSApplicationDelegate {
       countingPointer: presence.idleCheckCountsPointer(paletteOpen: palette != nil))
     switch presence {
     case .desktop:
+      if idle < ProcessInfo.processInfo.systemUptime - enteredAt { batteryWatch.userReturned() }
       // An open settings window means the user is changing them; the slideshow would cover it.
       if let settings, feed != nil, !wasOffHours, !settingsWindow.isVisible,
+        batteryWatch.startsOnItsOwn(onBattery: onBattery, battery: settings.battery),
         idle >= settings.idleMinutes * 60
       {
         send(.userIdle)
@@ -346,6 +367,7 @@ final class AppController: NSObject, NSApplicationDelegate {
   }
 
   @objc private func showNow() {
+    guard startsByHand else { return }
     send(.showNow)
   }
 
@@ -736,7 +758,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     menu.addItem(.separator())
     let show = menu.addItem(
       withTitle: "Show Slideshow", action: #selector(showNow), keyEquivalent: "")
-    show.isEnabled = feed != nil && presence == .desktop
+    show.isEnabled = feed != nil && presence == .desktop && startsByHand
     menu.addItem(withTitle: "Edit Settings…", action: #selector(editSettings), keyEquivalent: "")
     let rescanItem = menu.addItem(
       withTitle: "Rescan Library", action: #selector(rescan), keyEquivalent: "")
@@ -750,12 +772,18 @@ final class AppController: NSObject, NSApplicationDelegate {
     statusItem.menu = menu
   }
 
+  private var startsByHand: Bool {
+    guard let battery = settings?.battery else { return true }
+    return BatteryWatch.startsByHand(onBattery: onBattery, battery: battery)
+  }
+
   private func statusLine() -> String {
     guard libraryOpen else { return "No library database" }
     var count = "\(photoCount.formatted()) photos"
     if let timeframe = settings?.timeframe, timeframe != .all {
       count += " · showing \(timeframe.title)"
     }
+    if !startsByHand { count += " · off on battery" }
     guard scan != nil, scanProgress?.walkFinished != true else { return count }
     return "\(count) · scanning… \((scanProgress?.found ?? 0).formatted()) found"
   }

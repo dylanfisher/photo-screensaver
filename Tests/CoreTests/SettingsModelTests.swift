@@ -54,6 +54,11 @@ final class SettingsModelTests: XCTestCase {
         { $0.offHours.start == "22:00" }
       ),
       ("offHours.end", { model.set(\.offHours.end, to: "07:30") }, { $0.offHours.end == "07:30" }),
+      ("battery.mode", { model.set(\.battery.mode, to: .never) }, { $0.battery.mode == .never }),
+      (
+        "battery.limitMinutes", { model.setNumber(\.battery.limitMinutes, from: "25") },
+        { $0.battery.limitMinutes == 25 }
+      ),
       (
         "timeframe on this day", { model.setTimeframeKind(.onThisDay, today: self.today) },
         { $0.timeframe == .onThisDay }
